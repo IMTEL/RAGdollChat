@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Check, ChevronDown } from "lucide-react";
 
-export type Agent = { id: string; name: string };
+export type Agent = { id: string; name: string; greeting?: string };
 
 type Props = {
   agents: Agent[];
@@ -33,7 +33,7 @@ export default function AgentSelector({ agents, value, onChange }: Props) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="w-64 rounded-xl shadow-lg"
+        className="w-64 rounded-xl shadow-lg bg-white"
         align="start"
         sideOffset={8}
       >
@@ -47,9 +47,12 @@ export default function AgentSelector({ agents, value, onChange }: Props) {
               onChange?.(a.id);
             }}
           >
-            {value === a.id && (
+            {
+                // what is this for?
+            /* {value === a.id && (
               <Check className="absolute left-2 top-2 h-4 w-4" />
-            )}
+            )} */
+            } 
             {a.name}
           </DropdownMenuItem>
         ))}
