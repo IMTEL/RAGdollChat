@@ -3,10 +3,11 @@ import { Message, MessageContent } from "./message";
 type Props = {
     messages: string[];
     agentName?: string;
+    isLoading: boolean;
 };
 
 
-export default function MessagesView({ messages, agentName }: Props) {
+export default function MessagesView({ messages, agentName, isLoading }: Props) {
     const mask = 'linear-gradient(to bottom, transparent 0, black 5rem, black calc(100% - 0.5rem), transparent 100%)';
 
     return (
@@ -21,17 +22,32 @@ export default function MessagesView({ messages, agentName }: Props) {
                         <MessageContent className="border">{msg}</MessageContent>
                     </Message>
                     : (
-                    <Message key={i} from={"assistant"}>
-                        <div className="flex flex-col">
-                            {agentName && (
-                                <div className="text-xs text-gray-500 mb-1">{agentName}</div>
-                            )}
-                            <MessageContent className="border-gray-300 border-1">{msg}</MessageContent>
-                        </div>
-                    </Message>
+                        agentMessage(agentName, msg, i)
                     )
                 ))}
+                {isLoading && (
+                    agentMessage(
+                        agentName,
+                        <div
+                            className="h-5 w-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin"
+                            aria-label="Loading"
+                        />
+                    )
+                )}
             </div>
         </div>
     );
+}
+
+function agentMessage(agentName: string | undefined, content: React.ReactNode, key?: number) {
+    return <Message from={"assistant"} key={key}>
+        <div className="flex flex-col">
+            {agentName && (
+                <div className="text-xs text-gray-500 mb-1">{agentName}</div>
+            )}
+            <MessageContent className="border-gray-300 border-1">
+                {content}
+            </MessageContent>
+        </div>
+    </Message>;
 }
