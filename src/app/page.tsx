@@ -7,19 +7,19 @@ import { useState } from "react";
 
 export default function HomePage() {
   const MOCK_AGENTS: Agent[] = [
-    { id: "alpha", name: "RAGdoll Alpha" },
-    { id: "beta", name: "RAGdoll Beta" },
-    { id: "support", name: "Support Bot" },
+    { id: "alpha", name: "RAGdoll Alpha", greeting: "Hello, I'm RAGdoll Alpha! How can I help you?" },
+    { id: "beta", name: "RAGdoll Beta", greeting: "Hello, I'm RAGdoll Beta! What can I assist you with?" },
+    { id: "support", name: "Support Bot", greeting: "Hello, I'm Support Bot! Ask me anything!" },
   ];
 
-  let [messageList, setMessageList] = useState(["hello"]);
+  let [messageList, setMessageList] = useState(MOCK_AGENTS[0].greeting ? [MOCK_AGENTS[0].greeting] : []);
   let [selectedAgent, setSelectedAgent] = useState<string>(MOCK_AGENTS[0].id);
 
   return (
     <main>
         <div className="absolute top-4 left-4 z-50">
             <AgentSelector agents={MOCK_AGENTS} value={selectedAgent} onChange={(id) => {
-                setMessageList([]); // TODO: store message list for each agent
+                setMessageList(MOCK_AGENTS.find(a => a.id === id)?.greeting ? [MOCK_AGENTS.find(a => a.id === id)?.greeting!] : []);
                 setSelectedAgent(id);
             }} />
         </div>

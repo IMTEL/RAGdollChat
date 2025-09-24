@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Check, ChevronDown } from "lucide-react";
 
-export type Agent = { id: string; name: string };
+export type Agent = { id: string; name: string; greeting?: string };
 
 type Props = {
   agents: Agent[];

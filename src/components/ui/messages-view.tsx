@@ -16,7 +16,7 @@ export default function MessagesView({ messages, agentName }: Props) {
         >
             <div className="flex flex-col space-y-2 p-4 pt-20 w-[75vw] h-full">
                 {messages.map((msg, i) => (
-                    i % 2 === 0 ? 
+                    i % 2 !== 0 ? 
                     <Message key={i} from={"user"}>
                         <MessageContent className="border">{msg}</MessageContent>
                     </Message>
