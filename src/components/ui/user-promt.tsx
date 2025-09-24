@@ -30,7 +30,7 @@ export default function UserPromt({
   };
 
   return (
-    <div className="fixed inset-x-10 bottom-0 border-t z-50">
+    <div className="fixed inset-x-10 bottom-0 border-t z-50 bg-white">
       <div className="mx-auto w-full max-w-4xl p-4">
         <div className="relative">
           <AutoTextarea
