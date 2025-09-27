@@ -1,4 +1,7 @@
 import { Message, MessageContent } from "./message";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 
 type Props = {
     messages: string[];
@@ -46,7 +49,21 @@ function agentMessage(agentName: string | undefined, content: React.ReactNode, k
                 <div className="text-xs text-gray-500 mb-1">{agentName}</div>
             )}
             <MessageContent className="border-gray-300 border-1">
-                {content}
+                {typeof content === "string" ? (
+                    <ReactMarkdown
+                        rehypePlugins={[rehypeSanitize]}
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                            table: ({node, ...props}) => (
+                                <table className="markdown-table" {...props} />
+                            )
+                        }}
+                    >
+                        {content}
+                    </ReactMarkdown>
+                ) : (
+                    content
+                )}
             </MessageContent>
         </div>
     </Message>;
