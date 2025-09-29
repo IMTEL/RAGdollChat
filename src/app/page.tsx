@@ -5,13 +5,50 @@ import AgentSelector, { type Agent } from "@/components/ui/agent-selector";
 import MessagesView from "@/components/ui/messages-view";
 import { useState } from "react";
 
-// add logic for communicating with RAGdoll here!
-function sendToAgent(message: string, agentId: string): Promise<string> {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            resolve("dummy response from " + agentId);
-        }, 1000);
-    });
+
+async function sendToAgent(message: string, agentId: string): Promise<string> {
+    const requestBody = {
+        scene_name: "test_scene",
+        user_information: ["I am a test user."],
+        progress: [
+            {
+                taskName: "learning_basics",
+                description: "Learning basic concepts",
+                status: "started",
+                userId: "test_user",
+                subtaskProgress: [],
+            }
+        ],
+        user_actions: ["asked_question"],
+        NPC: 1,
+        chatLog: [
+            {
+                role: "user",
+                content: message
+            }
+        ]
+    };
+
+    try {
+        const response = await fetch("http://localhost:8000/ask-simple", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        return data.response || "No response from agent";
+    } catch (error) {
+        console.error("Failed to send message to agent:", error);
+        return "Error communicating with agent";
+    }
 }
 
 export default function HomePage() {
