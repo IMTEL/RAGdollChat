@@ -50,17 +50,14 @@ function agentMessage(agentName: string | undefined, content: React.ReactNode, k
             )}
             <MessageContent className="border-gray-300 border-1">
                 {typeof content === "string" ? (
-                    <ReactMarkdown
-                        rehypePlugins={[rehypeSanitize]}
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                            table: ({node, ...props}) => (
-                                <table className="markdown-table" {...props} />
-                            )
-                        }}
-                    >
-                        {content}
-                    </ReactMarkdown>
+                    <div className="markdown-content">
+                        <ReactMarkdown
+                            rehypePlugins={[rehypeSanitize]}
+                            remarkPlugins={[remarkGfm]}
+                        >
+                            {content}
+                        </ReactMarkdown>
+                    </div>
                 ) : (
                     content
                 )}
