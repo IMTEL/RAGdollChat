@@ -53,7 +53,7 @@ async function sendToAgent(message: string, agentId: string): Promise<string> {
 
 export default function HomePage() {
   const MOCK_AGENTS: Agent[] = [
-    { id: "alpha", name: "RAGdoll Alpha", greeting: "Hello, I'm RAGdoll Alpha! How can I help you?" },
+    { id: "alpha", name: "RAGdoll Alpha", greeting: "This page is deprecated. Use the agent-specific pages instead (/[agent_id])." },
     { id: "beta", name: "RAGdoll Beta", greeting: "Hello, I'm RAGdoll Beta! What can I assist you with?" },
     { id: "support", name: "Support Bot", greeting: "Hello, I'm Support Bot! Ask me anything!" },
   ];
@@ -81,7 +81,6 @@ export default function HomePage() {
                 });
             }} />
         </div>
-        
     </main>
   );
 }
