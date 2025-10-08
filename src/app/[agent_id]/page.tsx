@@ -36,6 +36,7 @@ const AgentPage = () => {
           // Set initial greeting if available
           const greeting = `Hello! I'm ${response.data.name}. How can I help you?`;
           setMessageList([greeting]);
+          setChatLog([{ role: "agent", content: greeting }]);
         })
         .catch((error) => {
           console.error("Error fetching agent info:", error);
