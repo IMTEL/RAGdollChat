@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
-import axios from 'axios';
-import { AutoTextarea } from '@/components/ui/auto-textarea';
-import { Button } from '@/components/ui/button';
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import axios from "axios";
+import ChatInput from "@/components/ui/user-promt";
+import MessagesView from "@/components/ui/messages-view";
 
 interface AgentInfo {
   name: string;
@@ -12,7 +12,7 @@ interface AgentInfo {
 }
 
 interface ChatMessage {
-  role: 'user' | 'agent';
+  role: "user" | "agent";
   content: string;
 }
 
@@ -22,74 +22,92 @@ const AgentPage = () => {
 
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
   const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
-  const [prompt, setPrompt] = useState<string>('');
+  const [messageList, setMessageList] = useState<string[]>([]);
+  const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
 
   useEffect(() => {
     if (agent_id) {
       // Fetch agent information
-      console.log('Fetching agent info for ID:', agent_id); // Log the agent_id
-      axios.get(`http://localhost:8000/agents/${agent_id}`)
+      console.log("Fetching agent info for ID:", agent_id);
+      axios
+        .get(`http://localhost:8000/agents/${agent_id}`)
         .then((response) => {
           setAgentInfo(response.data);
+          // Set initial greeting if available
+          const greeting = `Hello! I'm ${response.data.name}. How can I help you?`;
+          setMessageList([greeting]);
         })
         .catch((error) => {
-          console.error('Error fetching agent info:', error);
+          console.error("Error fetching agent info:", error);
         });
     }
   }, [agent_id]);
 
-  const handleSendPrompt = () => {
+  const handleSendPrompt = (prompt: string) => {
     if (!prompt.trim()) return;
+
+    setIsAwaitingResponse(true);
 
     const newChatLog: ChatMessage[] = [
       ...chatLog,
-      { role: 'user', content: prompt },
+      { role: "user", content: prompt },
     ];
 
-    axios.post('http://localhost:8000/api/chat/ask', {
-      agent_id,
-    //   active_role_ids: agentInfo?.roles || [],
-      active_role_ids: [],
-      access_key: 'key1', // Replace with actual access key if required
-      chat_log: newChatLog,
-    })
-      .then((response) => {
-        const agentResponse = typeof response.data.response === 'string'
-          ? response.data.response
-          : JSON.stringify(response.data.response); // Convert object to string if needed
+    setChatLog(newChatLog);
 
-        setChatLog([...newChatLog, { role: 'agent', content: agentResponse }]);
-        setPrompt('');
+    axios
+      .post("http://localhost:8000/api/chat/ask", {
+        agent_id,
+        active_role_ids: [], // TODO: handle roles properly
+        access_key: "key1", // TODO: handle access keys properly
+        chat_log: newChatLog,
+      })
+      .then((response) => {
+        const agentResponse = response.data.response.response;
+
+        const updatedChatLog: ChatMessage[] = [
+          ...newChatLog,
+          { role: "agent", content: agentResponse },
+        ];
+
+        setChatLog(updatedChatLog);
+        setIsAwaitingResponse(false);
       })
       .catch((error) => {
-        console.error('Error sending prompt:', error);
+        console.error("Error sending prompt:", error);
+        setChatLog((prev) => [
+          ...prev,
+          { role: "agent", content: "Error communicating with agent" },
+        ]);
+        setIsAwaitingResponse(false);
       });
   };
 
+  useEffect(() => {
+    setMessageList(chatLog.map((message) => message.content));
+  }, [chatLog]);
+
   if (!agentInfo) {
-    return <div>Loading agent information...</div>;
+    return (
+      <main>
+        <div className="flex h-screen w-full items-center justify-center">
+          <div>Loading agent information...</div>
+        </div>
+      </main>
+    );
   }
 
   return (
-    <div>
-      <h1>Agent: {agentInfo.name}</h1>
-      <div>
-        <h2>Chat</h2>
-        <div>
-          {chatLog.map((message, index) => (
-            <div key={index}>
-              <strong>{message.role}:</strong> {message.content}
-            </div>
-          ))}
-        </div>
-        <AutoTextarea
-          value={prompt}
-          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPrompt(e.target.value)}
-          placeholder="Write your prompt here..."
+    <main>
+      <div className="flex flex-col h-screen w-full items-center pb-22">
+        <MessagesView
+          isLoading={isAwaitingResponse}
+          messages={messageList}
+          agentName={agentInfo.name}
         />
-        <Button onClick={handleSendPrompt}>Send</Button>
+        <ChatInput disabled={isAwaitingResponse} onSend={handleSendPrompt} />
       </div>
-    </div>
+    </main>
   );
 };
 
