@@ -27,8 +27,8 @@ export default function MessagesView({
           i % 2 === 0 ? ( // First message is a greeting from the agent
             agentMessage(agentName, msg, i)
           ) : (
-            <div className="markdown-content">
-              <Message key={i} from={"user"}>
+            <div key={i} className="markdown-content">
+              <Message from={"user"}>
                 <MessageContent className="border">{msg}</MessageContent>
               </Message>
             </div>
