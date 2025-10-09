@@ -6,6 +6,8 @@ import axios from "axios";
 import ChatInput from "@/components/ui/user-promt";
 import MessagesView from "@/components/ui/messages-view";
 
+const BACKEND_API_URL = process.env.BACKEND_API_URL|| "http://localhost:8000";
+
 interface AgentInfo {
   name: string;
   roles: string[];
@@ -30,7 +32,7 @@ const AgentPage = () => {
       // Fetch agent information
       console.log("Fetching agent info for ID:", agent_id);
       axios
-        .get(`http://localhost:8000/agents/${agent_id}`)
+        .get(`${BACKEND_API_URL}/agents/${agent_id}`)
         .then((response) => {
           setAgentInfo(response.data);
           // Set initial greeting if available
