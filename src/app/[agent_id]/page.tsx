@@ -13,9 +13,17 @@ interface AgentInfo {
   roles: string[];
 }
 
+interface ContextUsed {
+  document_name: string;
+  category: string;
+  chunk_index: number;
+  content: string;
+}
+
 interface ChatMessage {
   role: "user" | "agent";
   content: string;
+  contextUsed?: ContextUsed[];
 }
 
 const AgentPage = () => {
@@ -24,7 +32,6 @@ const AgentPage = () => {
 
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
   const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
-  const [messageList, setMessageList] = useState<string[]>([]);
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
 
   useEffect(() => {
@@ -37,7 +44,6 @@ const AgentPage = () => {
           setAgentInfo(response.data);
           // Set initial greeting if available
           const greeting = `Hello! I'm ${response.data.name}. How can I help you?`;
-          setMessageList([greeting]);
           setChatLog([{ role: "agent", content: greeting }]);
         })
         .catch((error) => {
@@ -67,10 +73,15 @@ const AgentPage = () => {
       })
       .then((response) => {
         const agentResponse = response.data.response.response;
+        const contextUsed = response.data.response.context_used;
 
         const updatedChatLog: ChatMessage[] = [
           ...newChatLog,
-          { role: "agent", content: agentResponse },
+          { 
+            role: "agent", 
+            content: agentResponse,
+            contextUsed: contextUsed || []
+          },
         ];
 
         setChatLog(updatedChatLog);
@@ -85,10 +96,6 @@ const AgentPage = () => {
         setIsAwaitingResponse(false);
       });
   };
-
-  useEffect(() => {
-    setMessageList(chatLog.map((message) => message.content));
-  }, [chatLog]);
 
   if (!agentInfo) {
     return (
@@ -105,7 +112,7 @@ const AgentPage = () => {
       <div className="flex flex-col h-screen w-full items-center pb-22">
         <MessagesView
           isLoading={isAwaitingResponse}
-          messages={messageList}
+          messages={chatLog}
           agentName={agentInfo.name}
         />
         <ChatInput disabled={isAwaitingResponse} onSend={handleSendPrompt} />

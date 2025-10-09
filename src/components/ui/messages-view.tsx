@@ -2,9 +2,23 @@ import { Message, MessageContent } from "./message";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import ContextIndicator from "./context-indicator";
+
+interface ContextUsed {
+  document_name: string;
+  category: string;
+  chunk_index: number;
+  content: string;
+}
+
+interface ChatMessage {
+  role: "user" | "agent";
+  content: string;
+  contextUsed?: ContextUsed[];
+}
 
 type Props = {
-  messages: string[];
+  messages: ChatMessage[];
   agentName?: string;
   isLoading: boolean;
 };
@@ -24,12 +38,12 @@ export default function MessagesView({
     >
       <div className="flex flex-col space-y-2 p-4 pt-20 w-[75vw] h-full">
         {messages.map((msg, i) =>
-          i % 2 === 0 ? ( // First message is a greeting from the agent
+          msg.role === "agent" ? (
             agentMessage(agentName, msg, i)
           ) : (
             <div key={i} className="markdown-content">
               <Message from={"user"}>
-                <MessageContent className="border">{msg}</MessageContent>
+                <MessageContent className="border">{msg.content}</MessageContent>
               </Message>
             </div>
           ),
@@ -37,6 +51,8 @@ export default function MessagesView({
         {isLoading &&
           agentMessage(
             agentName,
+            { role: "agent", content: "" },
+            undefined,
             <div
               className="h-5 w-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin"
               aria-label="Loading"
@@ -49,9 +65,12 @@ export default function MessagesView({
 
 function agentMessage(
   agentName: string | undefined,
-  content: React.ReactNode,
+  message: ChatMessage,
   key?: number,
+  customContent?: React.ReactNode,
 ) {
+  const displayContent = customContent || message.content;
+  
   return (
     <Message from={"assistant"} key={key}>
       <div className="flex flex-col">
@@ -59,17 +78,22 @@ function agentMessage(
           <div className="text-xs text-gray-500 mb-1">{agentName}</div>
         )}
         <MessageContent className="border-gray-300 border-1">
-          {typeof content === "string" ? (
-            <div className="markdown-content">
-              <ReactMarkdown
-                rehypePlugins={[rehypeSanitize]}
-                remarkPlugins={[remarkGfm]}
-              >
-                {content}
-              </ReactMarkdown>
-            </div>
+          {typeof displayContent === "string" ? (
+            <>
+              <div className="markdown-content">
+                <ReactMarkdown
+                  rehypePlugins={[rehypeSanitize]}
+                  remarkPlugins={[remarkGfm]}
+                >
+                  {displayContent}
+                </ReactMarkdown>
+              </div>
+              {message.contextUsed && message.contextUsed.length > 0 && (
+                <ContextIndicator contexts={message.contextUsed} />
+              )}
+            </>
           ) : (
-            content
+            displayContent
           )}
         </MessageContent>
       </div>
