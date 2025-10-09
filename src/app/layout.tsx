@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RAGdollChat",
+  title: "RAGdoll Chat",
   description: "Chat with your agents powered by Retrieval-Augmented Generation (RAG)",
 };
 
