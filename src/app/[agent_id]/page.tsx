@@ -5,12 +5,13 @@ import { useParams } from "next/navigation";
 import axios from "axios";
 import ChatInput from "@/components/ui/user-promt";
 import MessagesView from "@/components/ui/messages-view";
+import RoleSelector, { Role } from "@/components/ui/agent-selector";
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL|| "http://localhost:8000";
 
 interface AgentInfo {
-  name: string;
-  roles: string[];
+  name: string
+  roles: Role[]
 }
 
 interface ContextUsed {
@@ -33,6 +34,7 @@ const AgentPage = () => {
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
   const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<string | null>(agentInfo?.roles[0]?.name || null);
 
   useEffect(() => {
     if (agent_id) {
@@ -41,7 +43,9 @@ const AgentPage = () => {
       axios
         .get(`${BACKEND_API_URL}/agents/${agent_id}`)
         .then((response) => {
+          console.log(response.data);
           setAgentInfo(response.data);
+          setSelectedRole(response.data.roles[0]?.name || null);
           // Set initial greeting if available
           const greeting = `Hello! I'm ${response.data.name}. How can I help you?`;
           setChatLog([{ role: "agent", content: greeting }]);
@@ -109,6 +113,9 @@ const AgentPage = () => {
 
   return (
     <main>
+      <div className="absolute top-4 left-4 z-50">
+        <RoleSelector roles={agentInfo.roles} value={selectedRole} onChange={setSelectedRole} />
+      </div>
       <div className="flex flex-col h-screen w-full items-center pb-22">
         <MessagesView
           isLoading={isAwaitingResponse}
