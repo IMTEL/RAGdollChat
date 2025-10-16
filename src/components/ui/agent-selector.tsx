@@ -46,8 +46,7 @@ export default function RoleSelector({ roles, value, onChange }: Props) {
           <DropdownMenuItem
             className="p-2"
             key={a.name}
-            onSelect={(e) => {
-              e.preventDefault();
+            onSelect={() => {
               onChange?.(a.name)
             }}
           >
