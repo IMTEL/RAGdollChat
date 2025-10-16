@@ -34,8 +34,9 @@ const AgentPage = () => {
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
   const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<string | null>(agentInfo?.roles[0]?.name || null);
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
 
+  // Initialize agent info and set initial greeting
   useEffect(() => {
     if (agent_id) {
       // Fetch agent information
@@ -45,16 +46,27 @@ const AgentPage = () => {
         .then((response) => {
           console.log(response.data);
           setAgentInfo(response.data);
-          setSelectedRole(response.data.roles[0]?.name || null);
-          // Set initial greeting if available
-          const greeting = `Hello! I'm ${response.data.name}. How can I help you?`;
-          setChatLog([{ role: "agent", content: greeting }]);
+          const initialRole = response.data.roles[0]?.name || null;
+          setSelectedRole(initialRole);
+          // Set initial greeting with role name
+          if (initialRole) {
+            const greeting = `Hello! I'm ${initialRole}. How can I help you?`;
+            setChatLog([{ role: "agent", content: greeting }]);
+          }
         })
         .catch((error) => {
           console.error("Error fetching agent info:", error);
         });
     }
   }, [agent_id]);
+
+  // Clear chat log and show new greeting when role changes
+  useEffect(() => {
+    if (selectedRole && agentInfo) {
+      const greeting = `Hello! I'm ${selectedRole}. How can I help you?`;
+      setChatLog([{ role: "agent", content: greeting }]);
+    }
+  }, [selectedRole]);
 
   const handleSendPrompt = (prompt: string) => {
     if (!prompt.trim()) return;
