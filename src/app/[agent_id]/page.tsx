@@ -71,7 +71,7 @@ const AgentPage = () => {
     axios
       .post("http://localhost:8000/api/chat/ask", {
         agent_id,
-        active_role_ids: [], // TODO: handle roles properly
+        active_role_id: selectedRole, // TODO: handle roles properly
         access_key: "key1", // TODO: handle access keys properly
         chat_log: newChatLog,
       })
