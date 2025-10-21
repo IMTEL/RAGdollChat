@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import ContextIndicator from "./context-indicator";
+import { useEffect, useRef } from "react";
 
 interface ContextUsed {
   document_name: string;
@@ -31,8 +32,40 @@ export default function MessagesView({
   const mask =
     "linear-gradient(to bottom, transparent 0, black 5rem, black calc(100% - 0.5rem), transparent 100%)";
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const userScrolledRef = useRef(false);
+
+  // Check if user is scrolled to bottom
+  const isScrolledToBottom = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return true;
+    
+    const threshold = 50; // pixels from bottom to consider "at bottom"
+    const scrollTop = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const clientHeight = container.clientHeight;
+    
+    return scrollHeight - scrollTop - clientHeight < threshold;
+  };
+
+  // Handle scroll events to track if user manually scrolled
+  const handleScroll = () => {
+    userScrolledRef.current = !isScrolledToBottom();
+  };
+
+  // Auto-scroll when messages change, but only if user was at bottom
+  useEffect(() => {
+    if (!userScrolledRef.current || isScrolledToBottom()) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      userScrolledRef.current = false;
+    }
+  }, [messages, isLoading]);
+
   return (
     <div
+      ref={scrollContainerRef}
+      onScroll={handleScroll}
       className="flex-1 overflow-y-scroll w-full flex justify-center h-full"
       style={{ WebkitMaskImage: mask, maskImage: mask }}
     >
@@ -58,6 +91,7 @@ export default function MessagesView({
               aria-label="Loading"
             />,
           )}
+        <div ref={messagesEndRef} />
       </div>
     </div>
   );
