@@ -13,22 +13,26 @@ import {
 import { Button } from "@/components/ui/button";
 import { Check, ChevronDown } from "lucide-react";
 
-export type Agent = { id: string; name: string; greeting?: string };
+export interface Role {
+  name: string
+  description: string
+  subset_of_corpa: number[]
+}
 
 type Props = {
-  agents: Agent[];
+  roles: Role[];
   value?: string | null;
   onChange?: (id: string) => void;
 };
 
-export default function AgentSelector({ agents, value, onChange }: Props) {
-  const selected = agents.find((a) => a.id === value) ?? null;
+export default function RoleSelector({ roles, value, onChange }: Props) {
+  const selected = roles.find((a) => a.name === value) ?? null;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline">
-          {selected ? selected.name : "Agents"}
+          {selected ? selected.name : "roles"}
           <ChevronDown className="h-4 w-4 opacity-70" />
         </Button>
       </DropdownMenuTrigger>
@@ -38,13 +42,12 @@ export default function AgentSelector({ agents, value, onChange }: Props) {
         sideOffset={8}
       >
         <DropdownMenuSeparator />
-        {agents.map((a) => (
+        {roles.map((a) => (
           <DropdownMenuItem
             className="p-2"
-            key={a.id}
-            onSelect={(e) => {
-              e.preventDefault();
-              onChange?.(a.id);
+            key={a.name}
+            onSelect={() => {
+              onChange?.(a.name)
             }}
           >
             {
