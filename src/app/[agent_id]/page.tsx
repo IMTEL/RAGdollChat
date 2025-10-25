@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import axios from "axios";
 import ChatInput from "@/components/ui/user-promt";
 import MessagesView from "@/components/ui/messages-view";
@@ -31,6 +31,9 @@ const AgentPage = () => {
   const params = useParams();
   const agent_id = params.agent_id as string;
 
+  const searchParams = useSearchParams();
+  const key = searchParams.get("key");
+
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
   const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
@@ -42,7 +45,11 @@ const AgentPage = () => {
       // Fetch agent information
       console.log("Fetching agent info for ID:", agent_id);
       axios
-        .get(`${BACKEND_API_URL}/agents/${agent_id}`)
+        .get(`${BACKEND_API_URL}/agent-info/?agent_id=${agent_id}`, {
+          headers : {
+            'access-key': key
+          }
+        })
         .then((response) => {
           console.log(response.data);
           setAgentInfo(response.data);
@@ -83,8 +90,8 @@ const AgentPage = () => {
     axios
       .post("http://localhost:8000/api/chat/ask", {
         agent_id,
-        active_role_id: selectedRole, // TODO: handle roles properly
-        access_key: "key1", // TODO: handle access keys properly
+        active_role_id: selectedRole,
+        access_key: key, 
         chat_log: newChatLog,
       })
       .then((response) => {
