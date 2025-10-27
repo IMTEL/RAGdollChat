@@ -6,6 +6,15 @@ import axios from "axios";
 import ChatInput from "@/components/ui/user-promt";
 import MessagesView from "@/components/ui/messages-view";
 import RoleSelector, { Role } from "@/components/ui/agent-selector";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL|| "http://localhost:8000";
 
@@ -27,6 +36,11 @@ interface ChatMessage {
   contextUsed?: ContextUsed[];
 }
 
+interface APIError {
+  title: string;
+  message: string;
+}
+
 const AgentPage = () => {
   const params = useParams();
   const agent_id = params.agent_id as string;
@@ -35,6 +49,7 @@ const AgentPage = () => {
   const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<APIError | null>(null);
 
   // Initialize agent info and set initial greeting
   useEffect(() => {
@@ -105,6 +120,41 @@ const AgentPage = () => {
       })
       .catch((error) => {
         console.error("Error sending prompt:", error);
+        
+        // Handle API errors with proper error messages
+        if (error.response) {
+          const status = error.response.status;
+          const errorMessage = error.response.data?.message || "Unknown error occurred";
+          
+          let errorTitle = "Error";
+          
+          // Determine error title based on status code
+          if (status === 401 || status === 403) {
+            errorTitle = "Authentication Error";
+          } else if (status === 429) {
+            errorTitle = "Rate Limit Exceeded";
+          } else if (status === 404) {
+            errorTitle = "Model Not Found";
+          } else if (status === 402) {
+            errorTitle = "Insufficient Credits";
+          } else if (status === 503) {
+            errorTitle = "Service Error";
+          } else {
+            errorTitle = "Communication Error";
+          }
+          
+          setApiError({
+            title: errorTitle,
+            message: errorMessage,
+          });
+        } else {
+          // Network or other errors
+          setApiError({
+            title: "Network Error",
+            message: "Unable to connect to the server. Please check your internet connection and try again.",
+          });
+        }
+        
         setChatLog((prev) => [
           ...prev,
           { role: "agent", content: "Error communicating with agent" },
@@ -136,6 +186,25 @@ const AgentPage = () => {
         />
         <ChatInput disabled={isAwaitingResponse} onSend={handleSendPrompt} />
       </div>
+
+      {/* API Error Alert Dialog */}
+      <AlertDialog open={apiError !== null} onOpenChange={(open: boolean) => !open && setApiError(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{apiError?.title}</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="whitespace-pre-wrap text-left">
+                {apiError?.message}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setApiError(null)}>
+              Okay
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 };
