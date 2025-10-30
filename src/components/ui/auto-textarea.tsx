@@ -11,10 +11,7 @@ export const AutoTextarea = React.forwardRef<
   <TextareaAutosize
     ref={ref}
     className={
-      `min-h-[44px] w-full rounded-xl border bg-background px-3 py-2 text-sm shadow-sm
-            outline-none ring-2 ring-ring
-            focus-visible:ring-2 focus-visible:ring-primary
-            disabled:cursor-not-allowed disabled:opacity-50 resize-none ` +
+      `bg-background ring-ring focus-visible:ring-primary min-h-[44px] w-full resize-none rounded-xl border px-3 py-2 text-sm shadow-sm ring-2 outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 ` +
       className
     }
     {...props}

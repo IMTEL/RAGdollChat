@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "RAGdoll Chat",
-  description: "Chat with your agents powered by Retrieval-Augmented Generation (RAG)",
+  description:
+    "Chat with your agents powered by Retrieval-Augmented Generation (RAG)",
 };
 
 export default function RootLayout({

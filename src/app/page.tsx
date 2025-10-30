@@ -5,7 +5,6 @@ import RoleSelector, { type Role } from "@/components/ui/agent-selector";
 import MessagesView from "@/components/ui/messages-view";
 import { useState } from "react";
 
-
 // async function sendToAgent(message: string, agentId: string): Promise<string> {
 //     const requestBody = {
 //         scene_name: "test_scene",
@@ -86,14 +85,11 @@ import { useState } from "react";
 // }
 
 export default function HomePage() {
-  
   return (
     <main>
-        <div className="flex h-screen w-full items-center justify-center">
-            <div>Please go to an agent-specific page (/[agent_id])</div>
-        </div>
+      <div className="flex h-screen w-full items-center justify-center">
+        <div>Please go to an agent-specific page (/[agent_id])</div>
+      </div>
     </main>
   );
 }
-
-

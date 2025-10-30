@@ -25,16 +25,16 @@ export default function ContextIndicator({ contexts }: ContextIndicatorProps) {
     <div className="mt-3 border-t border-gray-200 pt-2">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 transition-colors w-full"
+        className="flex w-full items-center gap-2 text-xs text-gray-500 transition-colors hover:text-gray-700"
       >
-        <FileText className="w-3 h-3" />
+        <FileText className="h-3 w-3" />
         <span>
           {contexts.length} source{contexts.length > 1 ? "s" : ""} referenced
         </span>
         {isExpanded ? (
-          <ChevronUp className="w-3 h-3 ml-auto" />
+          <ChevronUp className="ml-auto h-3 w-3" />
         ) : (
-          <ChevronDown className="w-3 h-3 ml-auto" />
+          <ChevronDown className="ml-auto h-3 w-3" />
         )}
       </button>
 
@@ -43,18 +43,18 @@ export default function ContextIndicator({ contexts }: ContextIndicatorProps) {
           {contexts.map((ctx, idx) => (
             <div
               key={idx}
-              className="bg-gray-50 rounded-md p-2 text-xs border border-gray-200"
+              className="rounded-md border border-gray-200 bg-gray-50 p-2 text-xs"
             >
-              <div className="flex items-start justify-between mb-1">
-                <div className="font-medium text-gray-700 flex items-center gap-1">
-                  <FileText className="w-3 h-3" />
+              <div className="mb-1 flex items-start justify-between">
+                <div className="flex items-center gap-1 font-medium text-gray-700">
+                  <FileText className="h-3 w-3" />
                   {ctx.document_name}
                 </div>
-                <div className="text-gray-500 text-[10px]">
+                <div className="text-[10px] text-gray-500">
                   {ctx.category} • Chunk {ctx.chunk_index}
                 </div>
               </div>
-              <div className="text-gray-600 mt-1 max-h-32 overflow-y-auto text-[11px] leading-relaxed">
+              <div className="mt-1 max-h-32 overflow-y-auto text-[11px] leading-relaxed text-gray-600">
                 {ctx.content}
               </div>
             </div>

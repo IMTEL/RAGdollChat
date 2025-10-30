@@ -40,12 +40,12 @@ export default function MessagesView({
   const isScrolledToBottom = () => {
     const container = scrollContainerRef.current;
     if (!container) return true;
-    
+
     const threshold = 50; // pixels from bottom to consider "at bottom"
     const scrollTop = container.scrollTop;
     const scrollHeight = container.scrollHeight;
     const clientHeight = container.clientHeight;
-    
+
     return scrollHeight - scrollTop - clientHeight < threshold;
   };
 
@@ -66,20 +66,22 @@ export default function MessagesView({
     <div
       ref={scrollContainerRef}
       onScroll={handleScroll}
-      className="flex-1 overflow-y-scroll w-full flex justify-center h-full"
+      className="flex h-full w-full flex-1 justify-center overflow-y-scroll"
       style={{ WebkitMaskImage: mask, maskImage: mask }}
     >
-      <div className="flex flex-col space-y-2 p-4 pt-20 w-[75vw] h-full">
+      <div className="flex h-full w-[75vw] flex-col space-y-2 p-4 pt-20">
         {messages.map((msg, i) =>
           msg.role === "agent" ? (
             agentMessage(agentName, msg, i)
           ) : (
             <div key={i} className="markdown-content">
               <Message from={"user"}>
-                <MessageContent className="border">{msg.content}</MessageContent>
+                <MessageContent className="border">
+                  {msg.content}
+                </MessageContent>
               </Message>
             </div>
-          ),
+          )
         )}
         {isLoading &&
           agentMessage(
@@ -87,9 +89,9 @@ export default function MessagesView({
             { role: "agent", content: "" },
             undefined,
             <div
-              className="h-5 w-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin"
+              className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"
               aria-label="Loading"
-            />,
+            />
           )}
         <div ref={messagesEndRef} />
       </div>
@@ -101,17 +103,17 @@ function agentMessage(
   agentName: string | undefined,
   message: ChatMessage,
   key?: number,
-  customContent?: React.ReactNode,
+  customContent?: React.ReactNode
 ) {
   const displayContent = customContent || message.content;
-  
+
   return (
     <Message from={"assistant"} key={key}>
       <div className="flex flex-col">
         {agentName && (
-          <div className="text-xs text-gray-500 mb-1">{agentName}</div>
+          <div className="mb-1 text-xs text-gray-500">{agentName}</div>
         )}
-        <MessageContent className="border-gray-300 border-1">
+        <MessageContent className="border-1 border-gray-300">
           {typeof displayContent === "string" ? (
             <>
               <div className="markdown-content">

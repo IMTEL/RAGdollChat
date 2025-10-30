@@ -14,9 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Check, ChevronDown } from "lucide-react";
 
 export interface Role {
-  name: string
-  description: string
-  subset_of_corpa: number[]
+  name: string;
+  description: string;
+  subset_of_corpa: number[];
 }
 
 type Props = {
@@ -37,7 +37,7 @@ export default function RoleSelector({ roles, value, onChange }: Props) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="w-64 rounded-xl shadow-lg bg-white"
+        className="w-64 rounded-xl bg-white shadow-lg"
         align="start"
         sideOffset={8}
       >
@@ -47,15 +47,15 @@ export default function RoleSelector({ roles, value, onChange }: Props) {
             className="p-2"
             key={a.name}
             onSelect={() => {
-              onChange?.(a.name)
+              onChange?.(a.name);
             }}
           >
             {
-                // what is this for?
-            /* {value === a.id && (
+              // what is this for?
+              /* {value === a.id && (
               <Check className="absolute left-2 top-2 h-4 w-4" />
             )} */
-            } 
+            }
             {a.name}
           </DropdownMenuItem>
         ))}

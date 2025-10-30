@@ -16,11 +16,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const BACKEND_API_URL = process.env.BACKEND_API_URL|| "http://localhost:8000";
+const BACKEND_API_URL = process.env.BACKEND_API_URL || "http://localhost:8000";
 
 interface AgentInfo {
-  name: string
-  roles: Role[]
+  name: string;
+  roles: Role[];
 }
 
 interface ContextUsed {
@@ -61,9 +61,9 @@ const AgentPage = () => {
       console.log("Fetching agent info for ID:", agent_id);
       axios
         .get(`${BACKEND_API_URL}/agent-info/?agent_id=${agent_id}`, {
-          headers : {
-            'access-key': key
-          }
+          headers: {
+            "access-key": key,
+          },
         })
         .then((response) => {
           console.log(response.data);
@@ -106,7 +106,7 @@ const AgentPage = () => {
       .post("http://localhost:8000/api/chat/ask", {
         agent_id,
         active_role_id: selectedRole,
-        access_key: key, 
+        access_key: key,
         chat_log: newChatLog,
       })
       .then((response) => {
@@ -115,10 +115,10 @@ const AgentPage = () => {
 
         const updatedChatLog: ChatMessage[] = [
           ...newChatLog,
-          { 
-            role: "agent", 
+          {
+            role: "agent",
             content: agentResponse,
-            contextUsed: contextUsed || []
+            contextUsed: contextUsed || [],
           },
         ];
 
@@ -127,14 +127,15 @@ const AgentPage = () => {
       })
       .catch((error) => {
         console.error("Error sending prompt:", error);
-        
+
         // Handle API errors with proper error messages
         if (error.response) {
           const status = error.response.status;
-          const errorMessage = error.response.data?.message || "Unknown error occurred";
-          
+          const errorMessage =
+            error.response.data?.message || "Unknown error occurred";
+
           let errorTitle = "Error";
-          
+
           // Determine error title based on status code
           if (status === 401 || status === 403) {
             errorTitle = "Authentication Error";
@@ -149,7 +150,7 @@ const AgentPage = () => {
           } else {
             errorTitle = "Communication Error";
           }
-          
+
           setApiError({
             title: errorTitle,
             message: errorMessage,
@@ -158,10 +159,11 @@ const AgentPage = () => {
           // Network or other errors
           setApiError({
             title: "Network Error",
-            message: "Unable to connect to the server. Please check your internet connection and try again.",
+            message:
+              "Unable to connect to the server. Please check your internet connection and try again.",
           });
         }
-        
+
         setChatLog((prev) => [
           ...prev,
           { role: "agent", content: "Error communicating with agent" },
@@ -183,9 +185,13 @@ const AgentPage = () => {
   return (
     <main>
       <div className="absolute top-4 left-4 z-50">
-        <RoleSelector roles={agentInfo.roles} value={selectedRole} onChange={setSelectedRole} />
+        <RoleSelector
+          roles={agentInfo.roles}
+          value={selectedRole}
+          onChange={setSelectedRole}
+        />
       </div>
-      <div className="flex flex-col h-screen w-full items-center pb-22">
+      <div className="flex h-screen w-full flex-col items-center pb-22">
         <MessagesView
           isLoading={isAwaitingResponse}
           messages={chatLog}
@@ -195,12 +201,15 @@ const AgentPage = () => {
       </div>
 
       {/* API Error Alert Dialog */}
-      <AlertDialog open={apiError !== null} onOpenChange={(open: boolean) => !open && setApiError(null)}>
+      <AlertDialog
+        open={apiError !== null}
+        onOpenChange={(open: boolean) => !open && setApiError(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{apiError?.title}</AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="whitespace-pre-wrap text-left">
+              <div className="text-left whitespace-pre-wrap">
                 {apiError?.message}
               </div>
             </AlertDialogDescription>
