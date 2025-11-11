@@ -6,6 +6,7 @@ import axios from "axios";
 import ChatInput from "@/components/ui/user-promt";
 import MessagesView from "@/components/ui/messages-view";
 import RoleSelector, { Role } from "@/components/ui/agent-selector";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,10 +50,18 @@ const AgentPage = () => {
   const key = searchParams.get("key");
 
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
-  const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
+  const [chatHistories, setChatHistories] = useState<
+    Record<string, ChatMessage[]>
+  >({});
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [apiError, setApiError] = useState<APIError | null>(null);
+
+  const historyStorageKey = agent_id
+    ? `ragdoll_chat_history_${agent_id}`
+    : null;
+  const roleStorageKey = agent_id ? `ragdoll_selected_role_${agent_id}` : null;
 
   // Initialize agent info and set initial greeting
   useEffect(() => {
@@ -68,61 +77,169 @@ const AgentPage = () => {
         .then((response) => {
           console.log(response.data);
           setAgentInfo(response.data);
-          const initialRole = response.data.roles[0]?.name || null;
-          setSelectedRole(initialRole);
-          // Set initial greeting with role name
-          if (initialRole) {
-            const greeting = `Hello! I'm ${initialRole}. How can I help you?`;
-            setChatLog([{ role: "agent", content: greeting }]);
-          }
         })
         .catch((error) => {
           console.error("Error fetching agent info:", error);
         });
     }
-  }, [agent_id]);
+  }, [agent_id, key]);
+
+  // Load chat history and selected role from localStorage once per agent
+  useEffect(() => {
+    if (!agent_id || typeof window === "undefined") {
+      return;
+    }
+
+    setIsHistoryLoaded(false);
+    setChatHistories({});
+    setSelectedRole(null);
+
+    try {
+      const storedHistories = historyStorageKey
+        ? window.localStorage.getItem(historyStorageKey)
+        : null;
+      if (storedHistories) {
+        const parsed = JSON.parse(storedHistories);
+        if (parsed && typeof parsed === "object") {
+          setChatHistories(parsed as Record<string, ChatMessage[]>);
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to parse stored chat history", error);
+    }
+
+    if (roleStorageKey) {
+      const storedRole = window.localStorage.getItem(roleStorageKey);
+      if (storedRole) {
+        setSelectedRole(storedRole);
+      }
+    }
+
+    setIsHistoryLoaded(true);
+  }, [agent_id, historyStorageKey, roleStorageKey]);
+
+  // Ensure a valid selected role once agent info is available
+  useEffect(() => {
+    if (!agentInfo || agentInfo.roles.length === 0) {
+      return;
+    }
+
+    if (
+      selectedRole &&
+      agentInfo.roles.some((role) => role.name === selectedRole)
+    ) {
+      return;
+    }
+
+    const fallbackRole = agentInfo.roles[0]?.name ?? null;
+    setSelectedRole(fallbackRole);
+  }, [agentInfo, selectedRole]);
+
+  // Seed a greeting message for roles without history
+  useEffect(() => {
+    if (!selectedRole || !agentInfo || !isHistoryLoaded) {
+      return;
+    }
+
+    setChatHistories((prev) => {
+      const existingHistory = prev[selectedRole];
+      if (existingHistory && existingHistory.length > 0) {
+        return prev;
+      }
+
+      const greeting = `Hello! I'm ${selectedRole}. How can I help you?`;
+      const greetingMessage: ChatMessage = {
+        role: "agent",
+        content: greeting,
+      };
+      return {
+        ...prev,
+        [selectedRole]: [greetingMessage],
+      };
+    });
+  }, [selectedRole, agentInfo, isHistoryLoaded]);
+
+  // Persist chat histories to localStorage when they change
+  useEffect(() => {
+    if (
+      !isHistoryLoaded ||
+      !historyStorageKey ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        historyStorageKey,
+        JSON.stringify(chatHistories)
+      );
+    } catch (error) {
+      console.warn("Failed to persist chat history", error);
+    }
+  }, [chatHistories, historyStorageKey, isHistoryLoaded]);
+
+  // Persist selected role to localStorage
+  useEffect(() => {
+    if (!isHistoryLoaded || !roleStorageKey || typeof window === "undefined") {
+      return;
+    }
+
+    if (selectedRole) {
+      window.localStorage.setItem(roleStorageKey, selectedRole);
+    } else {
+      window.localStorage.removeItem(roleStorageKey);
+    }
+  }, [selectedRole, roleStorageKey, isHistoryLoaded]);
+
+  const currentChatLog = selectedRole
+    ? (chatHistories[selectedRole] ?? [])
+    : [];
 
   // Clear chat log and show new greeting when role changes
-  useEffect(() => {
-    if (selectedRole && agentInfo) {
-      const greeting = `Hello! I'm ${selectedRole}. How can I help you?`;
-      setChatLog([{ role: "agent", content: greeting }]);
-    }
-  }, [selectedRole]);
-
   const handleSendPrompt = (prompt: string) => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || !selectedRole) return;
+
+    const roleForRequest = selectedRole;
+    const previousMessages = chatHistories[roleForRequest] ?? [];
+    const userMessage: ChatMessage = { role: "user", content: prompt };
+    const chatLogForRequest: ChatMessage[] = [...previousMessages, userMessage];
+
+    setChatHistories((prev) => ({
+      ...prev,
+      [roleForRequest]: chatLogForRequest,
+    }));
 
     setIsAwaitingResponse(true);
 
-    const newChatLog: ChatMessage[] = [
-      ...chatLog,
-      { role: "user", content: prompt },
-    ];
-
-    setChatLog(newChatLog);
-
     axios
-      .post("http://localhost:8000/api/chat/ask", {
+      .post(`${BACKEND_API_URL}/api/chat/ask`, {
         agent_id,
-        active_role_id: selectedRole,
+        active_role_id: roleForRequest,
         access_key: key,
-        chat_log: newChatLog,
+        chat_log: chatLogForRequest,
       })
       .then((response) => {
         const agentResponse = response.data.response.response;
         const contextUsed = response.data.response.context_used;
 
-        const updatedChatLog: ChatMessage[] = [
-          ...newChatLog,
-          {
+        setChatHistories((prev) => {
+          const previousMessages = prev[roleForRequest] ?? chatLogForRequest;
+          const agentMessage: ChatMessage = {
             role: "agent",
             content: agentResponse,
             contextUsed: contextUsed || [],
-          },
-        ];
+          };
+          const updatedMessages: ChatMessage[] = [
+            ...previousMessages,
+            agentMessage,
+          ];
 
-        setChatLog(updatedChatLog);
+          return {
+            ...prev,
+            [roleForRequest]: updatedMessages,
+          };
+        });
         setIsAwaitingResponse(false);
       })
       .catch((error) => {
@@ -164,12 +281,41 @@ const AgentPage = () => {
           });
         }
 
-        setChatLog((prev) => [
-          ...prev,
-          { role: "agent", content: "Error communicating with agent" },
-        ]);
+        setChatHistories((prev) => {
+          const previousMessages = prev[roleForRequest] ?? chatLogForRequest;
+          const errorMessage: ChatMessage = {
+            role: "agent",
+            content: "Error communicating with agent",
+          };
+          const updatedMessages: ChatMessage[] = [
+            ...previousMessages,
+            errorMessage,
+          ];
+
+          return {
+            ...prev,
+            [roleForRequest]: updatedMessages,
+          };
+        });
         setIsAwaitingResponse(false);
       });
+  };
+
+  const handleClearHistory = () => {
+    if (!selectedRole) {
+      return;
+    }
+
+    const greeting = `Hello! I'm ${selectedRole}. How can I help you?`;
+    const greetingMessage: ChatMessage = {
+      role: "agent",
+      content: greeting,
+    };
+
+    setChatHistories((prev) => ({
+      ...prev,
+      [selectedRole]: [greetingMessage],
+    }));
   };
 
   if (!agentInfo) {
@@ -185,16 +331,27 @@ const AgentPage = () => {
   return (
     <main>
       <div className="absolute top-4 left-4 z-50">
-        <RoleSelector
-          roles={agentInfo.roles}
-          value={selectedRole}
-          onChange={setSelectedRole}
-        />
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">Role:</span>
+          <RoleSelector
+            roles={agentInfo.roles}
+            value={selectedRole}
+            onChange={setSelectedRole}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleClearHistory}
+            disabled={!selectedRole}
+          >
+            Clear history
+          </Button>
+        </div>
       </div>
       <div className="flex h-screen w-full flex-col items-center pb-22">
         <MessagesView
           isLoading={isAwaitingResponse}
-          messages={chatLog}
+          messages={currentChatLog}
           agentName={agentInfo.name}
         />
         <ChatInput disabled={isAwaitingResponse} onSend={handleSendPrompt} />
