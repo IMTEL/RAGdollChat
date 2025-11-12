@@ -25,7 +25,7 @@ export default function ContextIndicator({ contexts }: ContextIndicatorProps) {
     <div className="mt-3 border-t border-gray-200 pt-2">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center gap-2 text-xs text-gray-500 transition-colors hover:text-gray-700"
+        className="flex w-full cursor-pointer items-center gap-2 text-xs text-gray-500 transition-colors hover:text-gray-700"
       >
         <FileText className="h-3 w-3" />
         <span>
