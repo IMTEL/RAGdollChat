@@ -1,36 +1,45 @@
-# Use Node 20 slim
-FROM node:20-slim AS builder
-
+# ----------------------------
+# 1. Dependencies
+# ----------------------------
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Install dependencies
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json* ./
 RUN npm ci
 
-# Copy source code
-COPY . .
-
-# Compile TypeScript -> dist/
-RUN npm run build
-
-# ------------------------------
-# Runner stage
-# ------------------------------
-FROM node:20-slim AS runner
-
+# ----------------------------
+# 2. Builder
+# ----------------------------
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY package.json ./
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
 
-# Default port (can be overridden by Docker or .env)
-ENV PORT=3002
+ENV NEXT_TELEMETRY_DISABLED=1
 
-# Make port visible to Docker
-EXPOSE 3002
+RUN npm run build
 
-# Ensure the Node app receives PORT and uses it
+# ----------------------------
+# 3. Runner
+# ----------------------------
+FROM node:20-alpine AS runner
+WORKDIR /app
 
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
-CMD ["node", "dist/index.js"]
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 nextjs
+
+# Copy artifacts
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+CMD ["node", "server.js"]
