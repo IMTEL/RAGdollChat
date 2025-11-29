@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: ragdoll-chat
     expose:
-      - "3002"
+      - "3001"
     environment:
       - NODE_ENV=production
     env_file:
@@ -17,7 +17,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "require('http').get('http://localhost:3002', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})",
+          "require('http').get('http://localhost:3001', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})",
         ]
       interval: 30s
       timeout: 10s
