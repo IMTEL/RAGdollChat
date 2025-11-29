@@ -1,42 +1,36 @@
-# -------------------------
-# 1. Install dependencies
-# -------------------------
-FROM node:20 AS deps
+# Use Node 20 slim
+FROM node:20-slim AS builder
+
 WORKDIR /app
-COPY package.json package-lock.json* ./
+
+# Install dependencies
+COPY package.json package-lock.json ./
 RUN npm ci
 
-# -------------------------
-# 2. Build application
-# -------------------------
-FROM node:20 AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Copy source code
 COPY . .
 
-ENV NEXT_TELEMETRY_DISABLED=1
-
+# Compile TypeScript -> dist/
 RUN npm run build
 
-# -------------------------
-# 3. Run application
-# -------------------------
+# ------------------------------
+# Runner stage
+# ------------------------------
 FROM node:20-slim AS runner
+
 WORKDIR /app
 
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY package.json ./
 
-# Create nextjs user
-RUN addgroup --system --gid 1001 nodejs \
-    && adduser --system --uid 1001 nextjs
+# Default port (can be overridden by Docker or .env)
+ENV PORT=3002
 
-# Copy built output
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+# Make port visible to Docker
+EXPOSE 3002
 
-USER nextjs
+# Ensure the Node app receives PORT and uses it
 
-EXPOSE 3000
-CMD ["node", "server.js"]
+
+CMD ["node", "dist/index.js"]
