@@ -1,15 +1,18 @@
 # Stage 1: Dependencies
 FROM node:20-alpine AS deps
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --include=optional
 
 # Stage 2: Builder
 FROM node:20-alpine AS builder
 WORKDIR /app
+
+# Install build dependencies for native modules
+RUN apk add --no-cache libc6-compat python3 make g++
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
