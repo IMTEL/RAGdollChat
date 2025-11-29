@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+
+  experimental: {
+    optimizeCss: false,   // <-- required fix for LightningCSS missing MUSL binary
+  },
 };
 
 export default nextConfig;
