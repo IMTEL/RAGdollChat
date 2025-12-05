@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import axios from "axios";
 import ChatInput from "@/components/ui/user-promt";
 import MessagesView from "@/components/ui/messages-view";
@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { apiClient, isModelDrivenMode } from "@/lib/api-client";
 
 const BACKEND_API_URL =
   process.env.NEXT_PUBLIC_BACKEND_API_URL || "/api/fallback";
@@ -46,6 +47,7 @@ interface APIError {
 const AgentPage = () => {
   const params = useParams();
   const agent_id = params.agent_id as string;
+  const router = useRouter();
 
   const searchParams = useSearchParams();
   const key = searchParams.get("key");
@@ -69,19 +71,41 @@ const AgentPage = () => {
     if (agent_id) {
       // Fetch agent information
       console.log("Fetching agent info for ID:", agent_id);
-      axios
-        .get(`${BACKEND_API_URL}/agent-info/?agent_id=${agent_id}`, {
-          headers: {
-            "access-key": key,
-          },
-        })
-        .then((response) => {
-          console.log(response.data);
-          setAgentInfo(response.data);
-        })
-        .catch((error) => {
-          console.error("Error fetching agent info:", error);
-        });
+      console.log("Model-driven mode:", isModelDrivenMode);
+      
+      if (isModelDrivenMode) {
+        // Use the new API client for model-driven mode
+        apiClient.getAgent()
+          .then((agent) => {
+            console.log("Agent data:", agent);
+            setAgentInfo({
+              name: agent.name,
+              roles: agent.roles.map(r => ({
+                id: r.name,
+                name: r.name,
+                greeting: `Hello! I'm ${agent.name} in ${r.name} mode. How can I help you?`
+              }))
+            });
+          })
+          .catch((error) => {
+            console.error("Error fetching agent info:", error);
+          });
+      } else {
+        // Use the old API for main mode
+        axios
+          .get(`${BACKEND_API_URL}/agent-info/?agent_id=${agent_id}`, {
+            headers: {
+              "access-key": key,
+            },
+          })
+          .then((response) => {
+            console.log(response.data);
+            setAgentInfo(response.data);
+          })
+          .catch((error) => {
+            console.error("Error fetching agent info:", error);
+          });
+      }
     }
   }, [agent_id, key]);
 
@@ -213,48 +237,92 @@ const AgentPage = () => {
 
     setIsAwaitingResponse(true);
 
-    axios
-      .post(`${BACKEND_API_URL}/api/chat/ask`, {
-        agent_id,
+    if (isModelDrivenMode) {
+      // Use the new API client for model-driven mode
+      apiClient.chat({
+        messages: chatLogForRequest.map(msg => ({
+          role: msg.role === 'agent' ? 'assistant' : msg.role,
+          content: msg.content
+        })),
         active_role_id: roleForRequest,
-        access_key: key,
-        chat_log: chatLogForRequest,
       })
-      .then((response) => {
-        const agentResponse = response.data.response.response;
-        const contextUsed = response.data.response.context_used;
+        .then((response) => {
+          setChatHistories((prev) => {
+            const previousMessages = prev[roleForRequest] ?? chatLogForRequest;
+            const agentMessage: ChatMessage = {
+              role: "agent",
+              content: response.response,
+              contextUsed: response.contexts.map(ctx => ({
+                document_name: ctx.document_name,
+                category: "",
+                chunk_index: ctx.chunk_index,
+                content: ctx.content
+              })),
+            };
+            const updatedMessages: ChatMessage[] = [
+              ...previousMessages,
+              agentMessage,
+            ];
 
-        setChatHistories((prev) => {
-          const previousMessages = prev[roleForRequest] ?? chatLogForRequest;
-          const agentMessage: ChatMessage = {
-            role: "agent",
-            content: agentResponse,
-            contextUsed: contextUsed || [],
-          };
-          const updatedMessages: ChatMessage[] = [
-            ...previousMessages,
-            agentMessage,
-          ];
-
-          return {
-            ...prev,
-            [roleForRequest]: updatedMessages,
-          };
+            return {
+              ...prev,
+              [roleForRequest]: updatedMessages,
+            };
+          });
+          setIsAwaitingResponse(false);
+        })
+        .catch((error) => {
+          console.error("Error sending prompt:", error);
+          setApiError({
+            title: "Chat Error",
+            message: error.message || "Failed to send message"
+          });
+          setIsAwaitingResponse(false);
         });
-        setIsAwaitingResponse(false);
-      })
-      .catch((error) => {
-        console.error("Error sending prompt:", error);
+    } else {
+      // Use the old API for main mode
+      axios
+        .post(`${BACKEND_API_URL}/api/chat/ask`, {
+          agent_id,
+          active_role_id: roleForRequest,
+          access_key: key,
+          chat_log: chatLogForRequest,
+        })
+        .then((response) => {
+          const agentResponse = response.data.response.response;
+          const contextUsed = response.data.response.context_used;
 
-        // Handle API errors with proper error messages
-        if (error.response) {
-          const status = error.response.status;
-          const errorMessage =
-            error.response.data?.message || "Unknown error occurred";
+          setChatHistories((prev) => {
+            const previousMessages = prev[roleForRequest] ?? chatLogForRequest;
+            const agentMessage: ChatMessage = {
+              role: "agent",
+              content: agentResponse,
+              contextUsed: contextUsed || [],
+            };
+            const updatedMessages: ChatMessage[] = [
+              ...previousMessages,
+              agentMessage,
+            ];
 
-          let errorTitle = "Error";
+            return {
+              ...prev,
+              [roleForRequest]: updatedMessages,
+            };
+          });
+          setIsAwaitingResponse(false);
+        })
+        .catch((error) => {
+          console.error("Error sending prompt:", error);
 
-          // Determine error title based on status code
+          // Handle API errors with proper error messages
+          if (error.response) {
+            const status = error.response.status;
+            const errorMessage =
+              error.response.data?.message || "Unknown error occurred";
+
+            let errorTitle = "Error";
+
+            // Determine error title based on status code
           if (status === 401 || status === 403) {
             errorTitle = "Authentication Error";
           } else if (status === 429) {
@@ -300,6 +368,7 @@ const AgentPage = () => {
         });
         setIsAwaitingResponse(false);
       });
+    }
   };
 
   const handleClearHistory = () => {

@@ -1,9 +1,8 @@
 "use client";
 
-import ChatInput from "@/components/ui/user-promt";
-import RoleSelector, { type Role } from "@/components/ui/agent-selector";
-import MessagesView from "@/components/ui/messages-view";
-import { useState } from "react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { USE_MODEL_DRIVEN_AGENT } from "@/lib/model-driven-config";
 
 // async function sendToAgent(message: string, agentId: string): Promise<string> {
 //     const requestBody = {
@@ -85,10 +84,21 @@ import { useState } from "react";
 // }
 
 export default function HomePage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // If model-driven mode is enabled, redirect to /agent (any path will work)
+    if (USE_MODEL_DRIVEN_AGENT) {
+      router.push('/agent');
+    }
+  }, [router]);
+
   return (
     <main>
       <div className="flex h-screen w-full items-center justify-center">
-        <div>Please go to an agent-specific page (/[agent_id])</div>
+        <div className="text-center space-y-4">
+          <p>Please go to an agent-specific page (/[agent_id])</p>
+        </div>
       </div>
     </main>
   );
