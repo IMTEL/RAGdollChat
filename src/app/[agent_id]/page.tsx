@@ -70,7 +70,7 @@ const AgentPage = () => {
       // Fetch agent information
       console.log("Fetching agent info for ID:", agent_id);
       axios
-        .get(`${BACKEND_API_URL}/agent-info/?agent_id=${agent_id}`, {
+        .get(`${BACKEND_API_URL}/agent-info?agent_id=${agent_id}`, {
           headers: {
             "access-key": key,
           },
