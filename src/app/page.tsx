@@ -1,94 +1,25 @@
-"use client";
-
-import ChatInput from "@/components/ui/user-promt";
-import RoleSelector, { type Role } from "@/components/ui/agent-selector";
-import MessagesView from "@/components/ui/messages-view";
-import { useState } from "react";
-
-// async function sendToAgent(message: string, agentId: string): Promise<string> {
-//     const requestBody = {
-//         scene_name: "test_scene",
-//         user_information: ["I am a test user."],
-//         progress: [
-//             {
-//                 taskName: "learning_basics",
-//                 description: "Learning basic concepts",
-//                 status: "started",
-//                 userId: "test_user",
-//                 subtaskProgress: [],
-//             }
-//         ],
-//         user_actions: ["asked_question"],
-//         NPC: 1,
-//         chatLog: [
-//             {
-//                 role: "user",
-//                 content: message
-//             }
-//         ]
-//     };
-
-//     try {
-//         const response = await fetch("http://localhost:8000/ask-simple", {
-//             method: "POST",
-//             headers: {
-//                 "Content-Type": "application/json",
-//             },
-//             body: JSON.stringify(requestBody),
-//         });
-
-//         if (!response.ok) {
-//             throw new Error(`Error: ${response.status} ${response.statusText}`);
-//         }
-
-//         const data = await response.json();
-
-//         return data.response || "No response from agent";
-//     } catch (error) {
-//         console.error("Failed to send message to agent:", error);
-//         return "Error communicating with agent";
-//     }
-// }
-
-// export default function HomePage() {
-//   const MOCK_AGENTS: Role[] = [
-//     { id: "alpha", name: "RAGdoll Alpha", greeting: "This page is deprecated. Use the agent-specific pages instead (/[agent_id])." },
-//     { id: "beta", name: "RAGdoll Beta", greeting: "Hello, I'm RAGdoll Beta! What can I assist you with?" },
-//     { id: "support", name: "Support Bot", greeting: "Hello, I'm Support Bot! Ask me anything!" },
-//   ];
-
-//   let [messageList, setMessageList] = useState(MOCK_AGENTS[0].greeting ? [MOCK_AGENTS[0].greeting] : []);
-//   let [selectedAgent, setSelectedAgent] = useState<string>(MOCK_AGENTS[0].id);
-//   let [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
-
-//   return (
-//     <main>
-//         <div className="absolute top-4 left-4 z-50">
-//             <RoleSelector agents={MOCK_AGENTS} value={selectedAgent} onChange={(id) => {
-//                 setMessageList(MOCK_AGENTS.find(a => a.id === id)?.greeting ? [MOCK_AGENTS.find(a => a.id === id)?.greeting!] : []);
-//                 setSelectedAgent(id);
-//             }} />
-//         </div>
-//         <div className="flex flex-col h-screen w-full items-center pb-22">
-//             <MessagesView isLoading={isAwaitingResponse} messages={messageList} agentName={MOCK_AGENTS.find(a => a.id === selectedAgent)?.name} />
-//             <ChatInput disabled={isAwaitingResponse} onSend={(msg) => {
-//                 setIsAwaitingResponse(true);
-//                 setMessageList(prev => [...prev, msg]);
-//                 sendToAgent(msg, selectedAgent).then((response) => {
-//                     setMessageList(prev => [...prev, response]);
-//                     setIsAwaitingResponse(false);
-//                 });
-//             }} />
-//         </div>
-//     </main>
-//   );
-// }
+import Link from "next/link";
+import { KeyRound } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function HomePage() {
   return (
-    <main>
-      <div className="flex h-screen w-full items-center justify-center">
-        <div>Please go to an agent-specific page (/[agent_id])</div>
+    <main className="min-h-screen bg-white">
+      <div className="mx-auto flex min-h-screen w-full max-w-xl items-center px-6">
+        <div className="w-full space-y-5 rounded-lg border bg-white p-6 shadow-sm">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold">RAGdoll Chat</h1>
+            <p className="text-muted-foreground text-sm">
+              Open an agent chat link or start an external access-key session.
+            </p>
+          </div>
+          <Button asChild className="w-full">
+            <Link href="/external">
+              <KeyRound className="h-4 w-4" />
+              External access-key chat
+            </Link>
+          </Button>
+        </div>
       </div>
     </main>
   );
