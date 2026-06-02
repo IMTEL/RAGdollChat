@@ -36,6 +36,12 @@ interface ChatMessage {
   role: "user" | "agent";
   content: string;
   contextUsed?: ContextUsed[];
+  functionCalls?: FunctionCall[];
+}
+
+interface FunctionCall {
+  name: string;
+  arguments: Record<string, unknown>;
 }
 
 interface APIError {
@@ -223,6 +229,7 @@ const AgentPage = () => {
       .then((response) => {
         const agentResponse = response.data.response.response;
         const contextUsed = response.data.response.context_used;
+        const functionCalls = response.data.response.function_calls;
 
         setChatHistories((prev) => {
           const previousMessages = prev[roleForRequest] ?? chatLogForRequest;
@@ -230,6 +237,7 @@ const AgentPage = () => {
             role: "agent",
             content: agentResponse,
             contextUsed: contextUsed || [],
+            functionCalls: functionCalls || [],
           };
           const updatedMessages: ChatMessage[] = [
             ...previousMessages,

@@ -4,6 +4,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import ContextIndicator from "./context-indicator";
 import { useEffect, useRef } from "react";
+import FunctionCallIndicator from "./function-call-indicator";
 
 interface ContextUsed {
   document_name: string;
@@ -16,6 +17,12 @@ interface ChatMessage {
   role: "user" | "agent";
   content: string;
   contextUsed?: ContextUsed[];
+  functionCalls?: FunctionCall[];
+}
+
+interface FunctionCall {
+  name: string;
+  arguments: Record<string, unknown>;
 }
 
 type Props = {
@@ -126,6 +133,9 @@ function agentMessage(
               </div>
               {message.contextUsed && message.contextUsed.length > 0 && (
                 <ContextIndicator contexts={message.contextUsed} />
+              )}
+              {message.functionCalls && message.functionCalls.length > 0 && (
+                <FunctionCallIndicator functionCalls={message.functionCalls} />
               )}
             </>
           ) : (

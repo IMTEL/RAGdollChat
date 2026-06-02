@@ -28,6 +28,8 @@ type BackendTarget = "local" | "server";
 type TestMode = "chat" | "voice" | "progress";
 const PANEL_CLASS = "rounded-lg border bg-white p-4 shadow-sm";
 const ENDPOINT_CLASS = "rounded-md border bg-gray-50 px-3 py-2 font-mono text-xs";
+const VELOCIRAPTOR_GIF =
+  "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExeGRvNDJiN2c1Nm95bmloa3Q5dHc0aDVhZG5yNXEzdGppa2FxZjVjbCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/YkoIN5YLQymQfFaPwO/giphy.gif";
 
 const encodeWav = (buffers: Float32Array[], sampleRate: number) => {
   const length = buffers.reduce((total, buffer) => total + buffer.length, 0);
@@ -74,6 +76,7 @@ interface Role {
   name: string;
   description: string;
   document_access: string[];
+  function_access?: string[];
 }
 
 interface ExternalAgentInfo {
@@ -93,6 +96,12 @@ interface ChatMessage {
   role: "user" | "agent";
   content: string;
   contextUsed?: ContextUsed[];
+  functionCalls?: FunctionCall[];
+}
+
+interface FunctionCall {
+  name: string;
+  arguments: Record<string, unknown>;
 }
 
 interface ProgressStep {
@@ -159,6 +168,7 @@ export default function ExternalChatPage() {
   const [voiceResult, setVoiceResult] = useState("");
   const [isTestingVoice, setIsTestingVoice] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [showVelociraptor, setShowVelociraptor] = useState(false);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState("");
   const [recordingError, setRecordingError] = useState("");
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -199,6 +209,15 @@ export default function ExternalChatPage() {
   });
 
   const formatResult = (value: unknown) => JSON.stringify(value, null, 2);
+
+  const runFunctionCalls = (functionCalls: FunctionCall[]) => {
+    functionCalls.forEach((functionCall) => {
+      if (functionCall.name === "velociraptor") {
+        setShowVelociraptor(true);
+        window.setTimeout(() => setShowVelociraptor(false), 3000);
+      }
+    });
+  };
 
   const requestProgressSession = useCallback(async (agentId: string) => {
     const response = await axios.get<ProgressSessionResponse>(
@@ -465,12 +484,15 @@ export default function ExternalChatPage() {
       .then((response) => {
         const agentResponse = response.data.response.response;
         const contextUsed = response.data.response.context_used;
+        const functionCalls = response.data.response.function_calls || [];
+        runFunctionCalls(functionCalls);
         setMessages((previousMessages) => [
           ...previousMessages,
           {
             role: "agent",
             content: agentResponse,
             contextUsed: contextUsed || [],
+            functionCalls,
           },
         ]);
       })
@@ -545,6 +567,8 @@ export default function ExternalChatPage() {
       const transcription = response.data.transcription;
       const agentResponse = response.data.response?.response;
       const contextUsed = response.data.response?.context_used || [];
+      const functionCalls = response.data.response?.function_calls || [];
+      runFunctionCalls(functionCalls);
       if (transcription) {
         setMessages((previousMessages) => [
           ...previousMessages,
@@ -553,6 +577,7 @@ export default function ExternalChatPage() {
             role: "agent",
             content: agentResponse || "No agent response returned.",
             contextUsed,
+            functionCalls,
           },
         ]);
       }
@@ -1151,6 +1176,16 @@ export default function ExternalChatPage() {
           >
             Dismiss
           </Button>
+        </div>
+      )}
+      {showVelociraptor && (
+        <div className="pointer-events-none fixed inset-0 z-[80] flex items-center justify-center bg-black/20">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={VELOCIRAPTOR_GIF}
+            alt="Velociraptor"
+            className="max-h-[70vh] max-w-[80vw] rounded-lg shadow-2xl"
+          />
         </div>
       )}
     </main>
