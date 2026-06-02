@@ -107,10 +107,12 @@ interface ProgressData {
   status: string;
   agent_id?: string;
   access_key?: string;
+  session_id?: string;
   user_id?: string;
   subtask_progress: ProgressSubtask[];
   started_at?: string | null;
   completed_at?: string | null;
+  updated_at?: string | null;
 }
 
 interface APIError {
@@ -128,6 +130,7 @@ export default function ExternalChatPage() {
   const [apiError, setApiError] = useState<APIError | null>(null);
   const [backendTarget, setBackendTarget] = useState<BackendTarget>("local");
   const [testMode, setTestMode] = useState<TestMode>("chat");
+  const [sessionId, setSessionId] = useState("");
   const [userInformation, setUserInformation] = useState("");
   const [userActions, setUserActions] = useState("");
   const [progressEntries, setProgressEntries] = useState<ProgressData[]>([]);
@@ -157,8 +160,19 @@ export default function ExternalChatPage() {
     if (!agentInfo || !normalizedRoleName) return null;
     return `ragdoll_external_chat_${agentInfo.agent_id}_${normalizedRoleName}`;
   }, [agentInfo, normalizedRoleName]);
+  const sessionStorageKey = useMemo(() => {
+    if (!agentInfo || !accessKey.trim()) return null;
+    return `ragdoll_external_session_${backendTarget}_${agentInfo.agent_id}_${accessKey.trim()}`;
+  }, [accessKey, agentInfo, backendTarget]);
   const activeBackendUrl =
     backendTarget === "local" ? LOCAL_BACKEND_API_URL : SERVER_BACKEND_API_URL;
+
+  const createSessionId = () => {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return crypto.randomUUID();
+    }
+    return `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  };
 
   const splitLines = (value: string) =>
     value
@@ -174,6 +188,8 @@ export default function ExternalChatPage() {
     user_information: splitLines(userInformation),
     user_actions: splitLines(userActions),
     progress: progressEntries,
+    session_id: sessionId,
+    progress_limit: 5,
   });
 
   const formatResult = (value: unknown) => JSON.stringify(value, null, 2);
@@ -232,6 +248,20 @@ export default function ExternalChatPage() {
       console.warn("Failed to persist external chat history", error);
     }
   }, [historyStorageKey, messages]);
+
+  useEffect(() => {
+    if (!sessionStorageKey || typeof window === "undefined") return;
+
+    const storedSessionId = window.localStorage.getItem(sessionStorageKey);
+    if (storedSessionId) {
+      setSessionId(storedSessionId);
+      return;
+    }
+
+    const nextSessionId = createSessionId();
+    window.localStorage.setItem(sessionStorageKey, nextSessionId);
+    setSessionId(nextSessionId);
+  }, [sessionStorageKey]);
 
   useEffect(() => {
     return () => {
@@ -506,6 +536,7 @@ export default function ExternalChatPage() {
   const buildProgressPayload = (): ProgressData => ({
     agent_id: agentInfo?.agent_id,
     access_key: accessKey.trim(),
+    session_id: sessionId,
     task_name: progressTaskName.trim() || "Unity test task",
     description: progressDescription.trim(),
     status: progressStatus,
@@ -537,6 +568,7 @@ export default function ExternalChatPage() {
         {
           agent_id: agentInfo.agent_id,
           access_key: accessKey.trim(),
+          session_id: sessionId,
           items: [buildProgressPayload()],
         }
       );
@@ -587,7 +619,7 @@ export default function ExternalChatPage() {
       const response = await axios.get<ProgressData[]>(
         `${activeBackendUrl}/api/progress`,
         {
-          params: { agent_id: agentInfo.agent_id },
+          params: { agent_id: agentInfo.agent_id, session_id: sessionId, limit: 20 },
           headers: { "access-key": accessKey.trim() },
         }
       );
@@ -635,6 +667,17 @@ export default function ExternalChatPage() {
         content: `Hello! I'm ${normalizedRoleName}. How can I help you?`,
       },
     ]);
+  };
+
+  const handleNewSession = () => {
+    const nextSessionId = createSessionId();
+    if (sessionStorageKey && typeof window !== "undefined") {
+      window.localStorage.setItem(sessionStorageKey, nextSessionId);
+    }
+    setSessionId(nextSessionId);
+    setProgressEntries([]);
+    setProgressResult("");
+    handleClearHistory();
   };
 
   if (!agentInfo) {
@@ -781,6 +824,22 @@ export default function ExternalChatPage() {
                   <span className="text-muted-foreground">Backend</span>
                   <div className="break-all font-mono">{activeBackendUrl}</div>
                 </div>
+                <div className="rounded-md bg-gray-50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">Session</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleNewSession}
+                    >
+                      New
+                    </Button>
+                  </div>
+                  <div className="mt-1 break-all font-mono">
+                    {sessionId || "Creating session..."}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -835,7 +894,7 @@ export default function ExternalChatPage() {
                   />
                 </label>
                 <div className="text-muted-foreground text-sm">
-                  Use the chat box to send the request. Fetched progress entries are included automatically.
+                  Use the chat box to send the request. The backend automatically includes the 5 most recent progress tasks for this session.
                 </div>
               </div>
             )}
@@ -1016,6 +1075,9 @@ export default function ExternalChatPage() {
                   >
                     Fetch
                   </Button>
+                </div>
+                <div className="text-muted-foreground text-sm">
+                  Progress is stored in backend memory for this session. Fetched tasks are shown here for debugging; chat can load recent session progress automatically.
                 </div>
                 {progressResult && (
                   <pre className="max-h-72 overflow-auto rounded-md border bg-gray-950 p-3 text-xs text-white">
