@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import axios from "axios";
 import {
   ClipboardList,
@@ -120,6 +127,12 @@ interface APIError {
   message: string;
 }
 
+interface ProgressSessionResponse {
+  agent_id: string;
+  session_id: string;
+  expires_after_hours: number;
+}
+
 export default function ExternalChatPage() {
   const [accessKey, setAccessKey] = useState("");
   const [roleName, setRoleName] = useState("");
@@ -167,13 +180,6 @@ export default function ExternalChatPage() {
   const activeBackendUrl =
     backendTarget === "local" ? LOCAL_BACKEND_API_URL : SERVER_BACKEND_API_URL;
 
-  const createSessionId = () => {
-    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      return crypto.randomUUID();
-    }
-    return `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  };
-
   const splitLines = (value: string) =>
     value
       .split("\n")
@@ -193,6 +199,17 @@ export default function ExternalChatPage() {
   });
 
   const formatResult = (value: unknown) => JSON.stringify(value, null, 2);
+
+  const requestProgressSession = useCallback(async (agentId: string) => {
+    const response = await axios.get<ProgressSessionResponse>(
+      `${activeBackendUrl}/api/progress/session`,
+      {
+        params: { agent_id: agentId },
+        headers: { "access-key": accessKey.trim() },
+      }
+    );
+    return response.data.session_id;
+  }, [accessKey, activeBackendUrl]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -258,10 +275,30 @@ export default function ExternalChatPage() {
       return;
     }
 
-    const nextSessionId = createSessionId();
-    window.localStorage.setItem(sessionStorageKey, nextSessionId);
-    setSessionId(nextSessionId);
-  }, [sessionStorageKey]);
+    if (!agentInfo) return;
+
+    let cancelled = false;
+    requestProgressSession(agentInfo.agent_id)
+      .then((nextSessionId) => {
+        if (cancelled) return;
+        window.localStorage.setItem(sessionStorageKey, nextSessionId);
+        setSessionId(nextSessionId);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setApiError({
+          title: "Session Error",
+          message: axios.isAxiosError(error)
+            ? error.response?.data?.detail ||
+              "Unable to create a backend progress session."
+            : "Unable to create a backend progress session.",
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agentInfo, requestProgressSession, sessionStorageKey]);
 
   useEffect(() => {
     return () => {
@@ -669,15 +706,27 @@ export default function ExternalChatPage() {
     ]);
   };
 
-  const handleNewSession = () => {
-    const nextSessionId = createSessionId();
-    if (sessionStorageKey && typeof window !== "undefined") {
-      window.localStorage.setItem(sessionStorageKey, nextSessionId);
+  const handleNewSession = async () => {
+    if (!agentInfo) return;
+
+    try {
+      const nextSessionId = await requestProgressSession(agentInfo.agent_id);
+      if (sessionStorageKey && typeof window !== "undefined") {
+        window.localStorage.setItem(sessionStorageKey, nextSessionId);
+      }
+      setSessionId(nextSessionId);
+      setProgressEntries([]);
+      setProgressResult("");
+      handleClearHistory();
+    } catch (error) {
+      setApiError({
+        title: "Session Error",
+        message: axios.isAxiosError(error)
+          ? error.response?.data?.detail ||
+            "Unable to create a backend progress session."
+          : "Unable to create a backend progress session.",
+      });
     }
-    setSessionId(nextSessionId);
-    setProgressEntries([]);
-    setProgressResult("");
-    handleClearHistory();
   };
 
   if (!agentInfo) {
