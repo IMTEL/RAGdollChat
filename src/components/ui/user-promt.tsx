@@ -10,6 +10,7 @@ type Props = {
   disabled?: boolean;
   maxRows?: number;
   placeholder?: string;
+  containerClassName?: string;
 };
 
 export default function UserPromt({
@@ -17,6 +18,7 @@ export default function UserPromt({
   disabled = false,
   maxRows = 4,
   placeholder = "Ask me anything...",
+  containerClassName = "fixed inset-x-10 bottom-0 z-50",
 }: Props) {
   const [value, setValue] = useState("");
   const [isComposing, setIsComposing] = useState(false);
@@ -30,7 +32,7 @@ export default function UserPromt({
   };
 
   return (
-    <div className="fixed inset-x-10 bottom-0 z-50 border-t bg-white">
+    <div className={`${containerClassName} border-t bg-white`}>
       <div className="mx-auto w-full max-w-4xl p-4">
         <div className="relative">
           <AutoTextarea
@@ -48,6 +50,7 @@ export default function UserPromt({
             rows={1}
             maxRows={maxRows}
             disabled={disabled}
+            placeholder={placeholder}
             className="flex-1 resize-none overflow-y-auto border-0 bg-transparent p-0 pr-12 leading-6 [scrollbar-color:currentColor_transparent] [scrollbar-width:thin]"
           />
           <Button
