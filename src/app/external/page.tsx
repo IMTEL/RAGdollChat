@@ -1,8 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import { KeyRound, RotateCcw } from "lucide-react";
+import {
+  ClipboardList,
+  FileAudio,
+  KeyRound,
+  Mic,
+  MessageSquare,
+  RotateCcw,
+  Square,
+} from "lucide-react";
 import ChatInput from "@/components/ui/user-promt";
 import MessagesView from "@/components/ui/messages-view";
 import { Button } from "@/components/ui/button";
@@ -10,6 +18,50 @@ import { Button } from "@/components/ui/button";
 const LOCAL_BACKEND_API_URL = "http://localhost:8000";
 const SERVER_BACKEND_API_URL = "https://iplvr.it.ntnu.no/backend";
 type BackendTarget = "local" | "server";
+type TestMode = "chat" | "voice" | "progress";
+const PANEL_CLASS = "rounded-lg border bg-white p-4 shadow-sm";
+const ENDPOINT_CLASS = "rounded-md border bg-gray-50 px-3 py-2 font-mono text-xs";
+
+const encodeWav = (buffers: Float32Array[], sampleRate: number) => {
+  const length = buffers.reduce((total, buffer) => total + buffer.length, 0);
+  const wavBuffer = new ArrayBuffer(44 + length * 2);
+  const view = new DataView(wavBuffer);
+
+  const writeString = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + length * 2, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, length * 2, true);
+
+  let offset = 44;
+  buffers.forEach((buffer) => {
+    buffer.forEach((sample) => {
+      const clamped = Math.max(-1, Math.min(1, sample));
+      view.setInt16(
+        offset,
+        clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff,
+        true
+      );
+      offset += 2;
+    });
+  });
+
+  return new Blob([wavBuffer], { type: "audio/wav" });
+};
 
 interface Role {
   name: string;
@@ -36,6 +88,31 @@ interface ChatMessage {
   contextUsed?: ContextUsed[];
 }
 
+interface ProgressStep {
+  step_name: string;
+  repetition_number: number;
+  completed: boolean;
+}
+
+interface ProgressSubtask {
+  subtask_name: string;
+  description: string;
+  completed: boolean;
+  step_progress: ProgressStep[];
+}
+
+interface ProgressData {
+  task_name: string;
+  description: string;
+  status: string;
+  agent_id?: string;
+  access_key?: string;
+  user_id?: string;
+  subtask_progress: ProgressSubtask[];
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
 interface APIError {
   title: string;
   message: string;
@@ -50,6 +127,30 @@ export default function ExternalChatPage() {
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
   const [apiError, setApiError] = useState<APIError | null>(null);
   const [backendTarget, setBackendTarget] = useState<BackendTarget>("local");
+  const [testMode, setTestMode] = useState<TestMode>("chat");
+  const [userInformation, setUserInformation] = useState("");
+  const [userActions, setUserActions] = useState("");
+  const [progressEntries, setProgressEntries] = useState<ProgressData[]>([]);
+  const [progressTaskName, setProgressTaskName] = useState("Unity test task");
+  const [progressDescription, setProgressDescription] = useState(
+    "Task progress sent by the external application."
+  );
+  const [progressStatus, setProgressStatus] = useState("started");
+  const [progressResult, setProgressResult] = useState("");
+  const [isTestingProgress, setIsTestingProgress] = useState(false);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioLanguage, setAudioLanguage] = useState("");
+  const [voiceResult, setVoiceResult] = useState("");
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState("");
+  const [recordingError, setRecordingError] = useState("");
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
+  const recordingBuffersRef = useRef<Float32Array[]>([]);
+  const recordingSampleRateRef = useRef(44100);
 
   const normalizedRoleName = roleName.trim();
   const historyStorageKey = useMemo(() => {
@@ -58,6 +159,24 @@ export default function ExternalChatPage() {
   }, [agentInfo, normalizedRoleName]);
   const activeBackendUrl =
     backendTarget === "local" ? LOCAL_BACKEND_API_URL : SERVER_BACKEND_API_URL;
+
+  const splitLines = (value: string) =>
+    value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+  const buildCommandPayload = (chatLog: ChatMessage[]) => ({
+    agent_id: agentInfo?.agent_id,
+    active_role_id: normalizedRoleName,
+    access_key: accessKey.trim(),
+    chat_log: chatLog,
+    user_information: splitLines(userInformation),
+    user_actions: splitLines(userActions),
+    progress: progressEntries,
+  });
+
+  const formatResult = (value: unknown) => JSON.stringify(value, null, 2);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -113,6 +232,98 @@ export default function ExternalChatPage() {
       console.warn("Failed to persist external chat history", error);
     }
   }, [historyStorageKey, messages]);
+
+  useEffect(() => {
+    return () => {
+      if (recordedAudioUrl) {
+        URL.revokeObjectURL(recordedAudioUrl);
+      }
+      processorNodeRef.current?.disconnect();
+      sourceNodeRef.current?.disconnect();
+      audioContextRef.current?.close();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, [recordedAudioUrl]);
+
+  const replaceAudioFile = (file: File) => {
+    if (recordedAudioUrl) {
+      URL.revokeObjectURL(recordedAudioUrl);
+    }
+    setAudioFile(file);
+    setRecordedAudioUrl(URL.createObjectURL(file));
+  };
+
+  const handleStartRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setRecordingError("Microphone recording is not available in this browser.");
+      return;
+    }
+
+    setRecordingError("");
+    setVoiceResult("");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const AudioContextConstructor =
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      const audioContext = new AudioContextConstructor();
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      const mutedOutput = audioContext.createGain();
+      mutedOutput.gain.value = 0;
+
+      recordingBuffersRef.current = [];
+      recordingSampleRateRef.current = audioContext.sampleRate;
+      processor.onaudioprocess = (event) => {
+        const channelData = event.inputBuffer.getChannelData(0);
+        recordingBuffersRef.current.push(new Float32Array(channelData));
+      };
+
+      source.connect(processor);
+      processor.connect(mutedOutput);
+      mutedOutput.connect(audioContext.destination);
+
+      audioContextRef.current = audioContext;
+      sourceNodeRef.current = source;
+      processorNodeRef.current = processor;
+      setIsRecording(true);
+    } catch (error) {
+      setRecordingError(
+        error instanceof Error
+          ? error.message
+          : "Unable to access the microphone."
+      );
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+  };
+
+  const handleStopRecording = () => {
+    processorNodeRef.current?.disconnect();
+    sourceNodeRef.current?.disconnect();
+    audioContextRef.current?.close();
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+
+    const blob = encodeWav(
+      recordingBuffersRef.current,
+      recordingSampleRateRef.current
+    );
+    const recordedFile = new File([blob], "microphone-recording.wav", {
+      type: "audio/wav",
+    });
+    replaceAudioFile(recordedFile);
+
+    processorNodeRef.current = null;
+    sourceNodeRef.current = null;
+    audioContextRef.current = null;
+    mediaStreamRef.current = null;
+    recordingBuffersRef.current = [];
+    setIsRecording(false);
+  };
 
   const handleConnect = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -183,12 +394,7 @@ export default function ExternalChatPage() {
     setIsAwaitingResponse(true);
 
     axios
-      .post(`${activeBackendUrl}/api/chat/ask`, {
-        agent_id: agentInfo.agent_id,
-        active_role_id: normalizedRoleName,
-        access_key: accessKey.trim(),
-        chat_log: chatLogForRequest,
-      })
+      .post(`${activeBackendUrl}/api/chat/ask`, buildCommandPayload(chatLogForRequest))
       .then((response) => {
         const agentResponse = response.data.response.response;
         const contextUsed = response.data.response.context_used;
@@ -218,10 +424,200 @@ export default function ExternalChatPage() {
       .finally(() => setIsAwaitingResponse(false));
   };
 
+  const handleTranscribeOnly = async () => {
+    if (!audioFile) return;
+
+    setIsTestingVoice(true);
+    setVoiceResult("");
+    setApiError(null);
+
+    const formData = new FormData();
+    formData.append("audio", audioFile);
+    if (audioLanguage.trim()) {
+      formData.append("language", audioLanguage.trim());
+    }
+
+    try {
+      const response = await axios.post(
+        `${activeBackendUrl}/api/chat/transcribe`,
+        formData
+      );
+      setVoiceResult(formatResult(response.data));
+    } catch (error) {
+      setApiError({
+        title: "Transcription Error",
+        message: axios.isAxiosError(error)
+          ? error.response?.data?.error ||
+            error.response?.data?.detail ||
+            "Unable to transcribe the audio file."
+          : "Unable to transcribe the audio file.",
+      });
+    } finally {
+      setIsTestingVoice(false);
+    }
+  };
+
+  const handleVoiceAsk = async () => {
+    if (!audioFile || !agentInfo || !normalizedRoleName) return;
+
+    setIsTestingVoice(true);
+    setVoiceResult("");
+    setApiError(null);
+
+    const formData = new FormData();
+    formData.append("audio", audioFile);
+    formData.append("data", JSON.stringify(buildCommandPayload(messages)));
+
+    try {
+      const response = await axios.post(
+        `${activeBackendUrl}/api/chat/askTranscribe`,
+        formData
+      );
+      setVoiceResult(formatResult(response.data));
+
+      const transcription = response.data.transcription;
+      const agentResponse = response.data.response?.response;
+      const contextUsed = response.data.response?.context_used || [];
+      if (transcription) {
+        setMessages((previousMessages) => [
+          ...previousMessages,
+          { role: "user", content: transcription },
+          {
+            role: "agent",
+            content: agentResponse || "No agent response returned.",
+            contextUsed,
+          },
+        ]);
+      }
+    } catch (error) {
+      setApiError({
+        title: "Voice Ask Error",
+        message: axios.isAxiosError(error)
+          ? error.response?.data?.message ||
+            error.response?.data?.detail ||
+            "Unable to ask the agent with audio."
+          : "Unable to ask the agent with audio.",
+      });
+    } finally {
+      setIsTestingVoice(false);
+    }
+  };
+
+  const buildProgressPayload = (): ProgressData => ({
+    agent_id: agentInfo?.agent_id,
+    access_key: accessKey.trim(),
+    task_name: progressTaskName.trim() || "Unity test task",
+    description: progressDescription.trim(),
+    status: progressStatus,
+    subtask_progress: [
+      {
+        subtask_name: "External endpoint test",
+        description: "Generated from the RAGdollChat external test page.",
+        completed: progressStatus === "complete",
+        step_progress: [
+          {
+            step_name: "Send request",
+            repetition_number: 0,
+            completed: true,
+          },
+        ],
+      },
+    ],
+  });
+
+  const handleInitializeProgress = async () => {
+    if (!agentInfo) return;
+    setIsTestingProgress(true);
+    setProgressResult("");
+    setApiError(null);
+
+    try {
+      const response = await axios.post(
+        `${activeBackendUrl}/api/progress/initializeTasks`,
+        {
+          agent_id: agentInfo.agent_id,
+          access_key: accessKey.trim(),
+          items: [buildProgressPayload()],
+        }
+      );
+      setProgressResult(formatResult(response.data));
+    } catch (error) {
+      setApiError({
+        title: "Progress Init Error",
+        message: axios.isAxiosError(error)
+          ? error.response?.data?.detail || "Unable to initialize progress."
+          : "Unable to initialize progress.",
+      });
+    } finally {
+      setIsTestingProgress(false);
+    }
+  };
+
+  const handleUpdateProgress = async () => {
+    if (!agentInfo) return;
+    setIsTestingProgress(true);
+    setProgressResult("");
+    setApiError(null);
+
+    try {
+      const response = await axios.post(
+        `${activeBackendUrl}/api/progress/updateTask`,
+        buildProgressPayload()
+      );
+      setProgressResult(formatResult(response.data));
+    } catch (error) {
+      setApiError({
+        title: "Progress Update Error",
+        message: axios.isAxiosError(error)
+          ? error.response?.data?.detail || "Unable to update progress."
+          : "Unable to update progress.",
+      });
+    } finally {
+      setIsTestingProgress(false);
+    }
+  };
+
+  const handleFetchProgress = async () => {
+    if (!agentInfo) return;
+    setIsTestingProgress(true);
+    setProgressResult("");
+    setApiError(null);
+
+    try {
+      const response = await axios.get<ProgressData[]>(
+        `${activeBackendUrl}/api/progress`,
+        {
+          params: { agent_id: agentInfo.agent_id },
+          headers: { "access-key": accessKey.trim() },
+        }
+      );
+      setProgressEntries(response.data);
+      setProgressResult(formatResult(response.data));
+    } catch (error) {
+      setApiError({
+        title: "Progress Fetch Error",
+        message: axios.isAxiosError(error)
+          ? error.response?.data?.detail || "Unable to fetch progress."
+          : "Unable to fetch progress.",
+      });
+    } finally {
+      setIsTestingProgress(false);
+    }
+  };
+
   const handleReset = () => {
+    processorNodeRef.current?.disconnect();
+    sourceNodeRef.current?.disconnect();
+    audioContextRef.current?.close();
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     setAgentInfo(null);
     setMessages([]);
     setApiError(null);
+    setProgressEntries([]);
+    setProgressResult("");
+    setVoiceResult("");
+    setRecordingError("");
+    setIsRecording(false);
   };
 
   const handleBackendTargetChange = (target: BackendTarget) => {
@@ -323,39 +719,313 @@ export default function ExternalChatPage() {
   }
 
   return (
-    <main>
-      <div className="absolute top-4 left-4 z-50">
-        <div className="flex items-center gap-2 rounded-md border bg-white px-3 py-2 shadow-sm">
+    <main className="min-h-screen bg-white">
+      <div className="fixed inset-x-0 top-0 z-40 border-b bg-white">
+        <div className="flex min-h-14 flex-wrap items-center gap-2 px-4 py-2">
           <span className="text-sm font-medium">{agentInfo.name}</span>
           <span className="text-muted-foreground text-sm">
             Role: {normalizedRoleName}
           </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleClearHistory}
-            disabled={isAwaitingResponse}
-          >
-            Clear history
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-            disabled={isAwaitingResponse}
-          >
-            <RotateCcw className="h-4 w-4" />
-            Change key
-          </Button>
+          <span className="text-muted-foreground hidden break-all font-mono text-xs md:inline">
+            {activeBackendUrl}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleClearHistory}
+              disabled={isAwaitingResponse}
+            >
+              Clear history
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              disabled={isAwaitingResponse}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Change key
+            </Button>
+          </div>
         </div>
       </div>
-      <div className="flex h-screen w-full flex-col items-center pb-22">
-        <MessagesView
-          isLoading={isAwaitingResponse}
-          messages={messages}
-          agentName={agentInfo.name}
-        />
-        <ChatInput disabled={isAwaitingResponse} onSend={handleSendPrompt} />
+
+      <div className="grid min-h-screen pt-14 lg:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="relative flex h-[calc(100vh-3.5rem)] min-h-[560px] flex-col items-center pb-24">
+          <MessagesView
+            isLoading={isAwaitingResponse}
+            messages={messages}
+            agentName={agentInfo.name}
+          />
+          <ChatInput
+            disabled={isAwaitingResponse}
+            onSend={handleSendPrompt}
+            containerClassName="fixed inset-x-4 bottom-0 z-50 lg:right-[420px]"
+          />
+        </section>
+
+        <aside className="h-auto border-t bg-gray-50 p-4 lg:h-[calc(100vh-3.5rem)] lg:overflow-y-auto lg:border-t-0 lg:border-l">
+          <div className="space-y-4">
+            <div className={PANEL_CLASS}>
+              <h2 className="text-lg font-semibold">Endpoint Tests</h2>
+              <p className="text-muted-foreground text-sm">
+                Calls use the selected backend, access key, agent, and role.
+              </p>
+              <div className="mt-3 grid gap-2 text-xs">
+                <div className="rounded-md bg-gray-50 px-3 py-2">
+                  <span className="text-muted-foreground">Agent</span>
+                  <div className="font-medium">{agentInfo.name}</div>
+                </div>
+                <div className="rounded-md bg-gray-50 px-3 py-2">
+                  <span className="text-muted-foreground">Backend</span>
+                  <div className="break-all font-mono">{activeBackendUrl}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 rounded-lg border bg-white p-1 shadow-sm">
+              <Button
+                type="button"
+                variant={testMode === "chat" ? "default" : "outline"}
+                onClick={() => setTestMode("chat")}
+              >
+                <MessageSquare className="h-4 w-4" />
+                Chat
+              </Button>
+              <Button
+                type="button"
+                variant={testMode === "voice" ? "default" : "outline"}
+                onClick={() => setTestMode("voice")}
+              >
+                <Mic className="h-4 w-4" />
+                Voice
+              </Button>
+              <Button
+                type="button"
+                variant={testMode === "progress" ? "default" : "outline"}
+                onClick={() => setTestMode("progress")}
+              >
+                <ClipboardList className="h-4 w-4" />
+                Progress
+              </Button>
+            </div>
+
+            {testMode === "chat" && (
+              <div className={`${PANEL_CLASS} space-y-4`}>
+                <div className={ENDPOINT_CLASS}>
+                  POST /api/chat/ask
+                </div>
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium">User/game information</span>
+                  <textarea
+                    value={userInformation}
+                    onChange={(event) => setUserInformation(event.target.value)}
+                    className="border-input min-h-24 w-full rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2"
+                    placeholder="One fact per line"
+                  />
+                </label>
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium">Recent user/game actions</span>
+                  <textarea
+                    value={userActions}
+                    onChange={(event) => setUserActions(event.target.value)}
+                    className="border-input min-h-24 w-full rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2"
+                    placeholder="One action per line"
+                  />
+                </label>
+                <div className="text-muted-foreground text-sm">
+                  Use the chat box to send the request. Fetched progress entries are included automatically.
+                </div>
+              </div>
+            )}
+
+            {testMode === "voice" && (
+              <div className={`${PANEL_CLASS} space-y-4`}>
+                <div className="space-y-1">
+                  <div className={ENDPOINT_CLASS}>
+                    POST /api/chat/transcribe
+                  </div>
+                  <div className={ENDPOINT_CLASS}>
+                    POST /api/chat/askTranscribe
+                  </div>
+                </div>
+                <div className="rounded-md border bg-gray-50 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                    <Mic className="h-4 w-4" />
+                    Microphone
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant={isRecording ? "secondary" : "outline"}
+                      onClick={handleStartRecording}
+                      disabled={isRecording || isTestingVoice}
+                    >
+                      <Mic className="h-4 w-4" />
+                      Record
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleStopRecording}
+                      disabled={!isRecording}
+                    >
+                      <Square className="h-4 w-4" />
+                      Stop
+                    </Button>
+                  </div>
+                  {isRecording && (
+                    <div className="mt-2 text-sm text-red-700">
+                      Recording from microphone...
+                    </div>
+                  )}
+                  {recordingError && (
+                    <div className="mt-2 text-sm text-red-700">
+                      {recordingError}
+                    </div>
+                  )}
+                </div>
+                <label className="block space-y-2">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <FileAudio className="h-4 w-4" />
+                    Audio file
+                  </span>
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={(event) => {
+                      const selectedFile = event.target.files?.[0];
+                      if (selectedFile) {
+                        replaceAudioFile(selectedFile);
+                      }
+                    }}
+                    className="w-full text-sm"
+                  />
+                </label>
+                {audioFile && (
+                  <div className="space-y-2 rounded-md border bg-gray-50 p-3">
+                    <div className="text-sm font-medium">{audioFile.name}</div>
+                    <div className="text-muted-foreground text-xs">
+                      {Math.max(1, Math.round(audioFile.size / 1024))} KB
+                    </div>
+                    {recordedAudioUrl && (
+                      <audio controls src={recordedAudioUrl} className="w-full" />
+                    )}
+                  </div>
+                )}
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium">Language</span>
+                  <input
+                    value={audioLanguage}
+                    onChange={(event) => setAudioLanguage(event.target.value)}
+                    className="border-input min-h-10 w-full rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2"
+                    placeholder="Optional, e.g. en or no"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleTranscribeOnly}
+                    disabled={!audioFile || isTestingVoice}
+                  >
+                    Transcribe
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleVoiceAsk}
+                    disabled={!audioFile || isTestingVoice}
+                  >
+                    Ask agent
+                  </Button>
+                </div>
+                {voiceResult && (
+                  <pre className="max-h-72 overflow-auto rounded-md border bg-gray-950 p-3 text-xs text-white">
+                    {voiceResult}
+                  </pre>
+                )}
+                <div className="text-muted-foreground text-sm">
+                  The backend currently supports speech-to-text only. There is no text-to-speech endpoint for voice output.
+                </div>
+              </div>
+            )}
+
+            {testMode === "progress" && (
+              <div className={`${PANEL_CLASS} space-y-4`}>
+                <div className="space-y-1">
+                  <div className={ENDPOINT_CLASS}>
+                    POST /api/progress/initializeTasks
+                  </div>
+                  <div className={ENDPOINT_CLASS}>
+                    POST /api/progress/updateTask
+                  </div>
+                  <div className={ENDPOINT_CLASS}>
+                    GET /api/progress
+                  </div>
+                </div>
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium">Task name</span>
+                  <input
+                    value={progressTaskName}
+                    onChange={(event) => setProgressTaskName(event.target.value)}
+                    className="border-input min-h-10 w-full rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2"
+                  />
+                </label>
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium">Description</span>
+                  <textarea
+                    value={progressDescription}
+                    onChange={(event) => setProgressDescription(event.target.value)}
+                    className="border-input min-h-20 w-full rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2"
+                  />
+                </label>
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium">Status</span>
+                  <select
+                    value={progressStatus}
+                    onChange={(event) => setProgressStatus(event.target.value)}
+                    className="border-input min-h-10 w-full rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2"
+                  >
+                    <option value="pending">pending</option>
+                    <option value="started">started</option>
+                    <option value="complete">complete</option>
+                  </select>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleInitializeProgress}
+                    disabled={isTestingProgress}
+                  >
+                    Init
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleUpdateProgress}
+                    disabled={isTestingProgress}
+                  >
+                    Update
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleFetchProgress}
+                    disabled={isTestingProgress}
+                  >
+                    Fetch
+                  </Button>
+                </div>
+                {progressResult && (
+                  <pre className="max-h-72 overflow-auto rounded-md border bg-gray-950 p-3 text-xs text-white">
+                    {progressResult}
+                  </pre>
+                )}
+              </div>
+            )}
+          </div>
+        </aside>
       </div>
 
       {apiError && (
