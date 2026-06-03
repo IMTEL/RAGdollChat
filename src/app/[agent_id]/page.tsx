@@ -36,7 +36,83 @@ interface ChatMessage {
   role: "user" | "agent";
   content: string;
   contextUsed?: ContextUsed[];
+  functionCalls?: FunctionCall[];
 }
+
+interface FunctionCall {
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+const extractJsonObject = (value: string): Record<string, unknown> | null => {
+  const trimmed = value.trim();
+  const startIndex = trimmed.indexOf("{");
+  if (startIndex === -1) return null;
+
+  let inString = false;
+  let escapeNext = false;
+  let depth = 0;
+
+  for (let index = startIndex; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (char === "\\") {
+      escapeNext = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const parsed = JSON.parse(trimmed.slice(startIndex, index + 1));
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+            ? parsed
+            : null;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+const normalizeAssistantPayload = (
+  message: unknown,
+  functionCalls: unknown
+): { message: string; functionCalls: FunctionCall[] } => {
+  const normalizedFunctionCalls = Array.isArray(functionCalls)
+    ? (functionCalls as FunctionCall[])
+    : [];
+  if (typeof message !== "string") {
+    return { message: "", functionCalls: normalizedFunctionCalls };
+  }
+
+  const parsed = extractJsonObject(message);
+  if (!parsed || typeof parsed.message !== "string") {
+    return { message, functionCalls: normalizedFunctionCalls };
+  }
+
+  return {
+    message: parsed.message,
+    functionCalls:
+      normalizedFunctionCalls.length > 0 && Array.isArray(functionCalls)
+        ? normalizedFunctionCalls
+        : Array.isArray(parsed.functions)
+          ? (parsed.functions as FunctionCall[])
+          : [],
+  };
+};
 
 interface APIError {
   title: string;
@@ -221,15 +297,19 @@ const AgentPage = () => {
         chat_log: chatLogForRequest,
       })
       .then((response) => {
-        const agentResponse = response.data.response.response;
+        const normalizedResponse = normalizeAssistantPayload(
+          response.data.response.response,
+          response.data.response.function_calls
+        );
         const contextUsed = response.data.response.context_used;
 
         setChatHistories((prev) => {
           const previousMessages = prev[roleForRequest] ?? chatLogForRequest;
           const agentMessage: ChatMessage = {
             role: "agent",
-            content: agentResponse,
+            content: normalizedResponse.message,
             contextUsed: contextUsed || [],
+            functionCalls: normalizedResponse.functionCalls,
           };
           const updatedMessages: ChatMessage[] = [
             ...previousMessages,
