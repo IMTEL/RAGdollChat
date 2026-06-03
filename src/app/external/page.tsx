@@ -1256,12 +1256,12 @@ export default function ExternalChatPage() {
         </div>
       )}
       {showVelociraptor && (
-        <div className="pointer-events-none fixed inset-0 z-[80] flex items-center justify-center bg-black/20">
+        <div className="pointer-events-none fixed inset-0 z-[80] bg-black/20">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={VELOCIRAPTOR_GIF}
             alt="Velociraptor"
-            className="max-h-[70vh] max-w-[80vw] rounded-lg shadow-2xl"
+            className="h-screen w-screen object-cover"
           />
         </div>
       )}
