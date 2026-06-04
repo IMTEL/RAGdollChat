@@ -25,6 +25,74 @@ interface FunctionCall {
   arguments: Record<string, unknown>;
 }
 
+const extractJsonObject = (value: string): Record<string, unknown> | null => {
+  const trimmed = value.trim();
+  const withoutFence = trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
+  const startIndex = withoutFence.indexOf("{");
+  if (startIndex === -1) return null;
+
+  let inString = false;
+  let escapeNext = false;
+  let depth = 0;
+
+  for (let index = startIndex; index < withoutFence.length; index += 1) {
+    const char = withoutFence[index];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (char === "\\") {
+      escapeNext = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const parsed = JSON.parse(withoutFence.slice(startIndex, index + 1));
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+            ? parsed
+            : null;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+const normalizeAgentMessageForDisplay = (message: ChatMessage) => {
+  const parsed = extractJsonObject(message.content);
+  if (!parsed || typeof parsed.message !== "string") {
+    return {
+      content: message.content,
+      functionCalls: message.functionCalls || [],
+    };
+  }
+
+  const parsedFunctionCalls = Array.isArray(parsed.functions)
+    ? (parsed.functions as FunctionCall[])
+    : [];
+
+  return {
+    content: parsed.message,
+    functionCalls:
+      message.functionCalls && message.functionCalls.length > 0
+        ? message.functionCalls
+        : parsedFunctionCalls,
+  };
+};
+
 type Props = {
   messages: ChatMessage[];
   agentName?: string;
@@ -112,7 +180,9 @@ function agentMessage(
   key?: number,
   customContent?: React.ReactNode
 ) {
-  const displayContent = customContent || message.content;
+  const normalizedMessage = normalizeAgentMessageForDisplay(message);
+  const displayContent = customContent || normalizedMessage.content;
+  const functionCalls = normalizedMessage.functionCalls;
 
   return (
     <Message from={"assistant"} key={key}>
@@ -134,8 +204,8 @@ function agentMessage(
               {message.contextUsed && message.contextUsed.length > 0 && (
                 <ContextIndicator contexts={message.contextUsed} />
               )}
-              {message.functionCalls && message.functionCalls.length > 0 && (
-                <FunctionCallIndicator functionCalls={message.functionCalls} />
+              {functionCalls && functionCalls.length > 0 && (
+                <FunctionCallIndicator functionCalls={functionCalls} />
               )}
             </>
           ) : (
