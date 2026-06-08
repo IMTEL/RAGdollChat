@@ -237,6 +237,10 @@ export default function ExternalChatPage() {
   const [audioLanguage, setAudioLanguage] = useState("");
   const [voiceResult, setVoiceResult] = useState("");
   const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const [sttWarmupStatus, setSttWarmupStatus] = useState<
+    "idle" | "warming" | "ready" | "error"
+  >("idle");
+  const [sttWarmupMessage, setSttWarmupMessage] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [showVelociraptor, setShowVelociraptor] = useState(false);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState("");
@@ -247,6 +251,7 @@ export default function ExternalChatPage() {
   const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
   const recordingBuffersRef = useRef<Float32Array[]>([]);
   const recordingSampleRateRef = useRef(44100);
+  const warmedBackendUrlsRef = useRef<Set<string>>(new Set());
 
   const normalizedRoleName = roleName.trim();
   const historyStorageKey = useMemo(() => {
@@ -388,6 +393,44 @@ export default function ExternalChatPage() {
       cancelled = true;
     };
   }, [agentInfo, requestProgressSession, sessionStorageKey]);
+
+  useEffect(() => {
+    if (testMode !== "voice") return;
+    if (warmedBackendUrlsRef.current.has(activeBackendUrl)) {
+      setSttWarmupStatus("ready");
+      setSttWarmupMessage("Speech-to-text model is warm.");
+      return;
+    }
+
+    let cancelled = false;
+    setSttWarmupStatus("warming");
+    setSttWarmupMessage("Warming speech-to-text model...");
+
+    axios
+      .post(`${activeBackendUrl}/api/chat/stt/warmup`)
+      .then((response) => {
+        if (cancelled) return;
+        warmedBackendUrlsRef.current.add(activeBackendUrl);
+        setSttWarmupStatus("ready");
+        setSttWarmupMessage(
+          `Speech-to-text ready (${response.data?.model || "base"}).`
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setSttWarmupStatus("error");
+        setSttWarmupMessage(
+          axios.isAxiosError(error)
+            ? error.response?.data?.error ||
+                "Unable to warm speech-to-text model."
+            : "Unable to warm speech-to-text model."
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBackendUrl, testMode]);
 
   useEffect(() => {
     return () => {
@@ -1059,6 +1102,17 @@ export default function ExternalChatPage() {
                   <div className={ENDPOINT_CLASS}>
                     POST /api/chat/askTranscribe
                   </div>
+                </div>
+                <div
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    sttWarmupStatus === "ready"
+                      ? "border-green-200 bg-green-50 text-green-800"
+                      : sttWarmupStatus === "error"
+                        ? "border-red-200 bg-red-50 text-red-800"
+                        : "border-gray-200 bg-gray-50 text-gray-700"
+                  }`}
+                >
+                  {sttWarmupMessage || "Speech-to-text model will warm when this tab opens."}
                 </div>
                 <div className="rounded-md border bg-gray-50 p-3">
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium">
