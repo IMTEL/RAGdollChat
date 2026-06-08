@@ -17,6 +17,7 @@ import {
   MessageSquare,
   RotateCcw,
   Square,
+  Volume2,
 } from "lucide-react";
 import ChatInput from "@/components/ui/user-promt";
 import MessagesView from "@/components/ui/messages-view";
@@ -102,6 +103,16 @@ interface ChatMessage {
 interface FunctionCall {
   name: string;
   arguments: Record<string, unknown>;
+}
+
+interface SpeechPayload {
+  audio_base64: string;
+  mime_type: string;
+  format: string;
+  engine: string;
+  voice: string;
+  language: string;
+  processing_time_seconds?: number;
 }
 
 const extractJsonObject = (value: string): Record<string, unknown> | null => {
@@ -241,6 +252,13 @@ export default function ExternalChatPage() {
     "idle" | "warming" | "ready" | "error"
   >("idle");
   const [sttWarmupMessage, setSttWarmupMessage] = useState("");
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [ttsLanguage, setTtsLanguage] = useState("en");
+  const [ttsWarmupStatus, setTtsWarmupStatus] = useState<
+    "idle" | "warming" | "ready" | "error"
+  >("idle");
+  const [ttsWarmupMessage, setTtsWarmupMessage] = useState("");
+  const [speechAudioUrl, setSpeechAudioUrl] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [showVelociraptor, setShowVelociraptor] = useState(false);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState("");
@@ -252,6 +270,7 @@ export default function ExternalChatPage() {
   const recordingBuffersRef = useRef<Float32Array[]>([]);
   const recordingSampleRateRef = useRef(44100);
   const warmedBackendUrlsRef = useRef<Set<string>>(new Set());
+  const warmedTtsKeysRef = useRef<Set<string>>(new Set());
 
   const normalizedRoleName = roleName.trim();
   const historyStorageKey = useMemo(() => {
@@ -284,6 +303,23 @@ export default function ExternalChatPage() {
   });
 
   const formatResult = (value: unknown) => JSON.stringify(value, null, 2);
+
+  const playSpeech = (speech?: SpeechPayload) => {
+    if (!speech?.audio_base64 || !speech.mime_type) return;
+
+    const audioUrl = `data:${speech.mime_type};base64,${speech.audio_base64}`;
+    setSpeechAudioUrl(audioUrl);
+    const audio = new Audio(audioUrl);
+    audio.play().catch((error) => {
+      setApiError({
+        title: "Audio Playback",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The browser blocked automatic audio playback.",
+      });
+    });
+  };
 
   const runFunctionCalls = (functionCalls: FunctionCall[]) => {
     functionCalls.forEach((functionCall) => {
@@ -431,6 +467,52 @@ export default function ExternalChatPage() {
       cancelled = true;
     };
   }, [activeBackendUrl, testMode]);
+
+  useEffect(() => {
+    if (!ttsEnabled) {
+      setTtsWarmupStatus("idle");
+      setTtsWarmupMessage("");
+      return;
+    }
+
+    const language = ttsLanguage.trim() || "en";
+    const warmupKey = `${activeBackendUrl}:${language}`;
+    if (warmedTtsKeysRef.current.has(warmupKey)) {
+      setTtsWarmupStatus("ready");
+      setTtsWarmupMessage(`Text-to-speech model is warm (${language}).`);
+      return;
+    }
+
+    let cancelled = false;
+    setTtsWarmupStatus("warming");
+    setTtsWarmupMessage("Warming text-to-speech model...");
+
+    axios
+      .post(`${activeBackendUrl}/api/chat/tts/warmup`, { language })
+      .then((response) => {
+        if (cancelled) return;
+        warmedTtsKeysRef.current.add(warmupKey);
+        setTtsWarmupStatus("ready");
+        setTtsWarmupMessage(
+          `Text-to-speech ready (${response.data?.voice || language}).`
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setTtsWarmupStatus("error");
+        setTtsWarmupMessage(
+          axios.isAxiosError(error)
+            ? error.response?.data?.error ||
+                error.response?.data?.message ||
+                "Unable to warm text-to-speech model."
+            : "Unable to warm text-to-speech model."
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBackendUrl, ttsEnabled, ttsLanguage]);
 
   useEffect(() => {
     return () => {
@@ -592,8 +674,16 @@ export default function ExternalChatPage() {
     setMessages(chatLogForRequest);
     setIsAwaitingResponse(true);
 
+    const endpoint = ttsEnabled ? "/api/chat/askWithSpeech" : "/api/chat/ask";
+    const payload = ttsEnabled
+      ? {
+          command: buildCommandPayload(chatLogForRequest),
+          tts_language: ttsLanguage.trim() || undefined,
+        }
+      : buildCommandPayload(chatLogForRequest);
+
     axios
-      .post(`${activeBackendUrl}/api/chat/ask`, buildCommandPayload(chatLogForRequest))
+      .post(`${activeBackendUrl}${endpoint}`, payload)
       .then((response) => {
         const normalizedResponse = normalizeAssistantPayload(
           response.data.response.response,
@@ -602,6 +692,7 @@ export default function ExternalChatPage() {
         const contextUsed = response.data.response.context_used;
         const functionCalls = normalizedResponse.functionCalls;
         runFunctionCalls(functionCalls);
+        playSpeech(response.data.speech);
         setMessages((previousMessages) => [
           ...previousMessages,
           {
@@ -672,10 +763,16 @@ export default function ExternalChatPage() {
     const formData = new FormData();
     formData.append("audio", audioFile);
     formData.append("data", JSON.stringify(buildCommandPayload(messages)));
+    if (ttsEnabled) {
+      formData.append("tts_language", ttsLanguage.trim() || "en");
+    }
 
     try {
+      const endpoint = ttsEnabled
+        ? "/api/chat/askTranscribeWithSpeech"
+        : "/api/chat/askTranscribe";
       const response = await axios.post(
-        `${activeBackendUrl}/api/chat/askTranscribe`,
+        `${activeBackendUrl}${endpoint}`,
         formData
       );
       setVoiceResult(formatResult(response.data));
@@ -688,6 +785,7 @@ export default function ExternalChatPage() {
       const contextUsed = response.data.response?.context_used || [];
       const functionCalls = normalizedResponse.functionCalls;
       runFunctionCalls(functionCalls);
+      playSpeech(response.data.speech);
       if (transcription) {
         setMessages((previousMessages) => [
           ...previousMessages,
@@ -1037,6 +1135,55 @@ export default function ExternalChatPage() {
               </div>
             </div>
 
+            <div className={`${PANEL_CLASS} space-y-3`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Volume2 className="h-4 w-4" />
+                    Voice output
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Uses local Piper TTS on the selected backend.
+                  </p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={ttsEnabled}
+                    onChange={(event) => setTtsEnabled(event.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Enabled
+                </label>
+              </div>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium">TTS language</span>
+                <input
+                  value={ttsLanguage}
+                  onChange={(event) => setTtsLanguage(event.target.value)}
+                  className="border-input min-h-10 w-full rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2"
+                  placeholder="en, no, or es"
+                  disabled={!ttsEnabled}
+                />
+              </label>
+              {ttsEnabled && (
+                <div
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    ttsWarmupStatus === "ready"
+                      ? "border-green-200 bg-green-50 text-green-800"
+                      : ttsWarmupStatus === "error"
+                        ? "border-red-200 bg-red-50 text-red-800"
+                        : "border-gray-200 bg-gray-50 text-gray-700"
+                  }`}
+                >
+                  {ttsWarmupMessage || "Text-to-speech model will warm when enabled."}
+                </div>
+              )}
+              {speechAudioUrl && (
+                <audio controls src={speechAudioUrl} className="w-full" />
+              )}
+            </div>
+
             <div className="grid grid-cols-3 gap-2 rounded-lg border bg-white p-1 shadow-sm">
               <Button
                 type="button"
@@ -1067,7 +1214,7 @@ export default function ExternalChatPage() {
             {testMode === "chat" && (
               <div className={`${PANEL_CLASS} space-y-4`}>
                 <div className={ENDPOINT_CLASS}>
-                  POST /api/chat/ask
+                  POST {ttsEnabled ? "/api/chat/askWithSpeech" : "/api/chat/ask"}
                 </div>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium">User/game information</span>
@@ -1100,7 +1247,10 @@ export default function ExternalChatPage() {
                     POST /api/chat/transcribe
                   </div>
                   <div className={ENDPOINT_CLASS}>
-                    POST /api/chat/askTranscribe
+                    POST{" "}
+                    {ttsEnabled
+                      ? "/api/chat/askTranscribeWithSpeech"
+                      : "/api/chat/askTranscribe"}
                   </div>
                 </div>
                 <div
@@ -1210,7 +1360,7 @@ export default function ExternalChatPage() {
                   </pre>
                 )}
                 <div className="text-muted-foreground text-sm">
-                  The backend currently supports speech-to-text only. There is no text-to-speech endpoint for voice output.
+                  Enable voice output above to receive and play local TTS audio with the agent response.
                 </div>
               </div>
             )}
