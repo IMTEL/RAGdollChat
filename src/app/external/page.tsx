@@ -763,6 +763,9 @@ export default function ExternalChatPage() {
     const formData = new FormData();
     formData.append("audio", audioFile);
     formData.append("data", JSON.stringify(buildCommandPayload(messages)));
+    if (audioLanguage.trim()) {
+      formData.append("stt_language", audioLanguage.trim());
+    }
     if (ttsEnabled) {
       formData.append("tts_language", ttsLanguage.trim() || "en");
     }
