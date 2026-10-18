@@ -330,6 +330,19 @@ export default function ExternalChatPage() {
     });
   };
 
+  // Speech and transcription routes authenticate with the access key as a
+  // bearer token plus the agent it belongs to.
+  const speechHeaders = useMemo(
+    () =>
+      agentInfo && accessKey.trim()
+        ? {
+            Authorization: `Bearer ${accessKey.trim()}`,
+            "X-Agent-Id": agentInfo.agent_id,
+          }
+        : undefined,
+    [agentInfo, accessKey]
+  );
+
   const requestProgressSession = useCallback(async (agentId: string) => {
     const response = await axios.get<ProgressSessionResponse>(
       `${activeBackendUrl}/api/progress/session`,
@@ -432,6 +445,11 @@ export default function ExternalChatPage() {
 
   useEffect(() => {
     if (testMode !== "voice") return;
+    if (!speechHeaders) {
+      setSttWarmupStatus("idle");
+      setSttWarmupMessage("Connect an agent to warm speech-to-text.");
+      return;
+    }
     if (warmedBackendUrlsRef.current.has(activeBackendUrl)) {
       setSttWarmupStatus("ready");
       setSttWarmupMessage("Speech-to-text model is warm.");
@@ -443,7 +461,9 @@ export default function ExternalChatPage() {
     setSttWarmupMessage("Warming speech-to-text model...");
 
     axios
-      .post(`${activeBackendUrl}/api/chat/stt/warmup`)
+      .post(`${activeBackendUrl}/api/chat/stt/warmup`, undefined, {
+        headers: speechHeaders,
+      })
       .then((response) => {
         if (cancelled) return;
         warmedBackendUrlsRef.current.add(activeBackendUrl);
@@ -466,12 +486,18 @@ export default function ExternalChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeBackendUrl, testMode]);
+  }, [activeBackendUrl, testMode, speechHeaders]);
 
   useEffect(() => {
     if (!ttsEnabled) {
       setTtsWarmupStatus("idle");
       setTtsWarmupMessage("");
+      return;
+    }
+
+    if (!speechHeaders) {
+      setTtsWarmupStatus("idle");
+      setTtsWarmupMessage("Connect an agent to warm text-to-speech.");
       return;
     }
 
@@ -488,7 +514,11 @@ export default function ExternalChatPage() {
     setTtsWarmupMessage("Warming text-to-speech model...");
 
     axios
-      .post(`${activeBackendUrl}/api/chat/tts/warmup`, { language })
+      .post(
+        `${activeBackendUrl}/api/chat/tts/warmup`,
+        { language },
+        { headers: speechHeaders }
+      )
       .then((response) => {
         if (cancelled) return;
         warmedTtsKeysRef.current.add(warmupKey);
@@ -512,7 +542,7 @@ export default function ExternalChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeBackendUrl, ttsEnabled, ttsLanguage]);
+  }, [activeBackendUrl, ttsEnabled, ttsLanguage, speechHeaders]);
 
   useEffect(() => {
     return () => {
@@ -624,10 +654,10 @@ export default function ExternalChatPage() {
 
     try {
       const response = await axios.get<ExternalAgentInfo>(
-        `${activeBackendUrl}/agent-info-by-accesskey`,
+        `${activeBackendUrl}/agents/agent-info-by-accesskey`,
         {
           headers: {
-            "access-key": keyForRequest,
+            Authorization: `Bearer ${keyForRequest}`,
           },
         }
       );
@@ -736,7 +766,8 @@ export default function ExternalChatPage() {
     try {
       const response = await axios.post(
         `${activeBackendUrl}/api/chat/transcribe`,
-        formData
+        formData,
+        { headers: speechHeaders }
       );
       setVoiceResult(formatResult(response.data));
     } catch (error) {
